@@ -1,0 +1,51 @@
+version: "2"
+
+run:
+  timeout: 5m
+  allow-parallel-runners: true
+  relative-path-mode: cfg
+
+linters:
+  default: none
+  enable:
+    - dupl
+    - errcheck
+    - copyloopvar
+    - ginkgolinter
+    - goconst
+    - gocyclo
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - unconvert
+    - unparam
+    - unused
+    - staticcheck
+  disable:
+    - prealloc
+    - revive
+  exclusions:
+    rules:
+      - path: "^api/.*"
+        linters:
+          - lll
+      - path: "^internal/.*"
+        linters:
+          - dupl
+          - lll
+  settings:
+    revive:
+      rules:
+        - name: comment-spacings
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  # example settings for formatters; remove if unused
+  settings:
+    gofmt:
+      simplify: true
+
+issues: {}

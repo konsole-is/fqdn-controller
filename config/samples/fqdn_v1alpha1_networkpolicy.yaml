@@ -1,0 +1,9 @@
+apiVersion: fqdn.konsole.is/v1alpha1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: fqdn-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: networkpolicy-sample
+spec:
+  # TODO(user): Add fields here

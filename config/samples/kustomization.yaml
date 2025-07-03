@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- fqdn_v1alpha1_networkpolicy.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
