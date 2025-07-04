@@ -41,6 +41,27 @@ help: ## Display this help.
 
 ##@ Development
 
+KIND_CLUSTER ?= fqdn-controller
+
+.PHONY: setup
+setup: ## Create a kind cluster for development with dependencies installed
+	@command -v $(KIND) >/dev/null 2>&1 || { \
+		echo "Kind is not installed. Please install Kind manually."; \
+		exit 1; \
+	}
+	@if ! $(KIND) get clusters | grep -q "^$(KIND_CLUSTER)$$"; then \
+		echo "Creating kind cluster '$(KIND_CLUSTER)'..."; \
+		$(KIND) create cluster --name $(KIND_CLUSTER); \
+	else \
+		echo "Kind cluster '$(KIND_CLUSTER)' already exists."; \
+	fi
+	go run hack/deps/certmanager/main.go
+	go run hack/deps/prometheus/main.go
+
+.PHONY: cleanup
+cleanup: ## Remove the development cluster
+	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
@@ -61,11 +82,10 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
-KIND_CLUSTER ?= fqdn-controller-test-e2e
+E2E_KIND_CLUSTER ?= fqdn-controller-e2e
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -73,7 +93,7 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 		echo "Kind is not installed. Please install Kind manually."; \
 		exit 1; \
 	}
-	$(KIND) create cluster --name $(KIND_CLUSTER)
+	$(KIND) create cluster --name $(E2E_KIND_CLUSTER)
 
 .PHONY: test-e2e
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
@@ -82,7 +102,7 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
-	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+	@$(KIND) delete cluster --name $(E2E_KIND_CLUSTER)
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter

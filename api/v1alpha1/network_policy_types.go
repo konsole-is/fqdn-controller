@@ -22,7 +22,7 @@ import (
 )
 
 // NetworkType defines the available ip address types to resolve
-// +kubebuilder:validation:Enum=all,ipv4,ipv6
+// +kubebuilder:validation:Enum=all;ipv4;ipv6
 type NetworkType string
 
 const (
@@ -31,7 +31,8 @@ const (
 	Ipv6 NetworkType = "ipv6"
 )
 
-// ResolverString returns the string value that net.Resolver expects in LookupIP
+// ResolverString returns the string value that net.Resolver expects in LookupIP.
+// Returns an empty string for unknown types.
 func (n NetworkType) ResolverString() string {
 	switch n {
 	case All:
@@ -48,7 +49,6 @@ func (n NetworkType) ResolverString() string {
 // on the internet. It must consist of one or more labels separated by dots (e.g., "api.example.com"), where each label
 // can contain letters, digits, and hyphens, but cannot start or end with a hyphen. The FQDN must end with a top-level
 // domain (e.g., ".com", ".org") of at least two characters.
-//
 // +kubebuilder:validation:Pattern=`^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
 type FQDN string
 
@@ -78,9 +78,12 @@ type EgressRule struct {
 
 // NetworkPolicySpec defines the desired state of NetworkPolicy.
 type NetworkPolicySpec struct {
+	// PodSelector defines which pods this network policy shall apply to
 	PodSelector metav1.LabelSelector `json:"podSelector"`
-	Ingress     []IngressRule        `json:"ingress,omitempty"`
-	Egress      []EgressRule         `json:"egress,omitempty"`
+	// Ingress defines the incoming network traffic rules for the selected pods
+	Ingress []IngressRule `json:"ingress,omitempty"`
+	// Egress defines the outbound network traffic rules for the selected pods
+	Egress []EgressRule `json:"egress,omitempty"`
 	// EnabledNetworkType defines which type of IP addresses to allow.
 	// Options are 'all', 'ipv4' or 'ipv6'
 	// +kubebuilder:default:=ipv4
@@ -106,13 +109,16 @@ type NetworkPolicyStatus struct {
 	LatestLookupTime metav1.Time `json:"latestLookupTime,omitempty"`
 
 	// LatestErrors Maps FQDN's to correlated lookup errors in the last resolve
-	LatestErrors map[FQDN]string `json:"latestErrors,omitempty"`
+	LatestErrors map[FQDN]NetworkPolicyResolveConditionReason `json:"latestErrors,omitempty"`
 
-	// CurrentAddressesCount Counts the number of valid IPs applied in the generated network policy
-	CurrentAddressesCount int32 `json:"CurrentAddressCount,omitempty"`
+	// CurrentAddressCount Counts the number of valid IPs applied in the generated network policy
+	CurrentAddressCount int32 `json:"CurrentAddressCount,omitempty"`
 
 	// BlockedAddressCount Counts the number of IPs excluded from the network policy due to being private
 	BlockedAddressCount int32 `json:"blockedAddressCount,omitempty"`
+
+	// TotalAddressCount The number of total IPs resolved from the FQDNs before filtering
+	TotalAddressCount int32 `json:"totalAddressesCount,omitempty"`
 
 	// ResolvedAddresses Lists the currently resolved addresses. Note that they may not all be applied to the network
 	// policy due to being private and blocked. Check the underlying network policy to get the exact addresses applied.

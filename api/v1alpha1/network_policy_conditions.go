@@ -6,6 +6,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// SetResolveCondition updates the Resolve condition based on the provided reason and message.
+// If the reason indicates success, the status is set to True with a standard success message.
 func (np *NetworkPolicy) SetResolveCondition(reason NetworkPolicyResolveConditionReason, message string) {
 	condition := metav1.ConditionFalse
 	if reason == NetworkPolicyResolveSuccess {
@@ -21,6 +23,8 @@ func (np *NetworkPolicy) SetResolveCondition(reason NetworkPolicyResolveConditio
 	})
 }
 
+// SetReadyConditionTrue sets the Ready condition to True with a standard success message.
+// Updates the ObservedGeneration to reflect the current spec generation.
 func (np *NetworkPolicy) SetReadyConditionTrue() {
 	meta.SetStatusCondition(&np.Status.Conditions, metav1.Condition{
 		Type:               string(NetworkPolicyReadyCondition),
@@ -32,6 +36,7 @@ func (np *NetworkPolicy) SetReadyConditionTrue() {
 	np.Status.ObservedGeneration = np.GetGeneration()
 }
 
+// SetReadyConditionFalse sets the Ready condition to False with the provided reason and message.
 func (np *NetworkPolicy) SetReadyConditionFalse(reason NetworkPolicyReadyConditionReason, message string) {
 	meta.SetStatusCondition(&np.Status.Conditions, metav1.Condition{
 		Type:               string(NetworkPolicyReadyCondition),

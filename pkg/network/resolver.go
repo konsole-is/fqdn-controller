@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+type lookupError struct {
+	Reason  v1alpha1.NetworkPolicyResolveConditionReason
+	Message string
+}
+
+func (e lookupError) Error() string {
+	return e.Message
+}
+
 // DNSResolverResult Is the resulting outcome of a Resolver's DNS lookup
 type DNSResolverResult struct {
 	// Domain that the lookup was for
@@ -17,7 +26,7 @@ type DNSResolverResult struct {
 	// Error that the lookup may have caused
 	Error error
 	// CIDRs found for the given domain if no error occurred
-	CIDRs []v1alpha1.CIDR
+	CIDRs []*v1alpha1.CIDR
 }
 
 // IsError returns true if the result is an error
@@ -78,8 +87,8 @@ func (dlr *DNSResolverResult) ErrorMessage() string {
 // DNSResolverResultList is a wrapper around DNSResolver result with helpful getter methods
 type DNSResolverResultList []*DNSResolverResult
 
-func (dlr DNSResolverResultList) CIDRs() []v1alpha1.CIDR {
-	var cidrs []v1alpha1.CIDR
+func (dlr DNSResolverResultList) CIDRs() []*v1alpha1.CIDR {
+	var cidrs []*v1alpha1.CIDR
 	for _, dr := range dlr {
 		cidrs = append(cidrs, dr.CIDRs...)
 	}
@@ -122,8 +131,8 @@ func (dlr DNSResolverResultList) AggregatedErrorMessage() string {
 	return message
 }
 
-func (dlr DNSResolverResultList) CIDRLookupTable() map[v1alpha1.FQDN][]v1alpha1.CIDR {
-	lookup := make(map[v1alpha1.FQDN][]v1alpha1.CIDR)
+func (dlr DNSResolverResultList) CIDRLookupTable() map[v1alpha1.FQDN][]*v1alpha1.CIDR {
+	lookup := make(map[v1alpha1.FQDN][]*v1alpha1.CIDR)
 	for _, dr := range dlr {
 		if !dr.IsError() {
 			lookup[dr.Domain] = dr.CIDRs
@@ -132,11 +141,11 @@ func (dlr DNSResolverResultList) CIDRLookupTable() map[v1alpha1.FQDN][]v1alpha1.
 	return lookup
 }
 
-func (dlr DNSResolverResultList) ErrorLookupTable() map[v1alpha1.FQDN]string {
-	lookup := make(map[v1alpha1.FQDN]string)
+func (dlr DNSResolverResultList) ErrorLookupTable() map[v1alpha1.FQDN]v1alpha1.NetworkPolicyResolveConditionReason {
+	lookup := make(map[v1alpha1.FQDN]v1alpha1.NetworkPolicyResolveConditionReason)
 	for _, dr := range dlr {
 		if dr.IsError() {
-			lookup[dr.Domain] = dr.ErrorMessage()
+			lookup[dr.Domain] = dr.ErrorReason()
 		}
 	}
 	return lookup
@@ -148,40 +157,41 @@ type Resolver interface {
 
 // DNSResolver resolves domains to IPs
 type DNSResolver struct {
-	networkType v1alpha1.NetworkType
-	resolver    Resolver
+	resolver Resolver
 }
 
-type lookupError struct {
-	Reason  v1alpha1.NetworkPolicyResolveConditionReason
-	Message string
-}
-
-func (e lookupError) Error() string {
-	return e.Message
+// NewDNSResolver returns the default resolver to use for DNS lookup
+func NewDNSResolver() *DNSResolver {
+	return &DNSResolver{
+		resolver: &net.Resolver{},
+	}
 }
 
 // lookupIP resolves the host to its underlying IP addresses
-func (r *DNSResolver) lookupIP(ctx context.Context, host v1alpha1.FQDN) ([]v1alpha1.CIDR, error) {
+func (r *DNSResolver) lookupIP(ctx context.Context, networkType v1alpha1.NetworkType, host v1alpha1.FQDN) ([]*v1alpha1.CIDR, error) {
 	if !host.Valid() {
 		return nil, &lookupError{
 			Reason:  v1alpha1.NetworkPolicyResolveInvalidDomain,
 			Message: fmt.Sprintf("Received invalid FQDN '%s'", host),
 		}
 	}
-	ips, err := r.resolver.LookupIP(ctx, r.networkType.ResolverString(), string(host))
+	ips, err := r.resolver.LookupIP(ctx, networkType.ResolverString(), string(host))
 	if err != nil {
 		return nil, err
 	}
-	var cidrs []v1alpha1.CIDR
+	var cidrs []*v1alpha1.CIDR
 	for _, ip := range ips {
-		cidrs = append(cidrs, v1alpha1.CIDR{IP: ip, Range: 32})
+		cidrs = append(cidrs, &v1alpha1.CIDR{IP: ip, Prefix: 32})
 	}
 	return cidrs, nil
 }
 
 // Resolve all the given fqdns to a DNSResolverResult
-func (r *DNSResolver) Resolve(fqdns []v1alpha1.FQDN, timeout time.Duration) DNSResolverResultList {
+func (r *DNSResolver) Resolve(
+	fqdns []v1alpha1.FQDN,
+	timeout time.Duration,
+	networkType v1alpha1.NetworkType,
+) DNSResolverResultList {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -192,7 +202,7 @@ func (r *DNSResolver) Resolve(fqdns []v1alpha1.FQDN, timeout time.Duration) DNSR
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cidrs, err := r.lookupIP(ctx, fqdn)
+			cidrs, err := r.lookupIP(ctx, networkType, fqdn)
 			results <- &DNSResolverResult{Error: err, Domain: fqdn, CIDRs: cidrs}
 		}()
 	}
@@ -208,13 +218,21 @@ func (r *DNSResolver) Resolve(fqdns []v1alpha1.FQDN, timeout time.Duration) DNSR
 		lookupResults = append(lookupResults, res)
 	}
 
-	return DNSResolverResultList(lookupResults)
+	return lookupResults
 }
 
-// NewDNSResolver returns the default resolver to use for DNS lookup
-func NewDNSResolver(networkType v1alpha1.NetworkType) DNSResolver {
-	return DNSResolver{
-		networkType: networkType,
-		resolver:    &net.Resolver{},
-	}
+type FakeDNSResolver struct {
+	results DNSResolverResultList
+}
+
+func (r *FakeDNSResolver) SetResults(results []*DNSResolverResult) {
+	r.results = results
+}
+
+func (r *FakeDNSResolver) Resolve(
+	fqdns []v1alpha1.FQDN,
+	timeout time.Duration,
+	networkType v1alpha1.NetworkType,
+) DNSResolverResultList {
+	return r.results
 }

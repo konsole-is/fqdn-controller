@@ -1,25 +1,47 @@
 package v1alpha1
 
 import (
+	"context"
 	"fmt"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net"
 	"regexp"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
 	"time"
 )
 
 // CIDR represents a network range in CIDR (Classless Inter-Domain Routing) notation.
-// It consists of an IP address and a Range (prefix length) that defines the size of the network.
+// It consists of an IP address and a Prefix (prefix length) that defines the size of the network.
 type CIDR struct {
-	IP    net.IP
-	Range int
+	IP     net.IP
+	Prefix int
+}
+
+func NewCIDR(cidr string) (*CIDR, error) {
+	ip, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+	prefix, _ := ipNet.Mask.Size()
+	return &CIDR{
+		IP:     ip,
+		Prefix: prefix,
+	}, nil
+}
+
+func MustCIDR(cidr string) *CIDR {
+	if c, err := NewCIDR(cidr); err != nil {
+		panic(err)
+	} else {
+		return c
+	}
 }
 
 // String returns the string representation of the CIDR
 func (c *CIDR) String() string {
-	return fmt.Sprintf("%s/%d", c.IP, c.Range)
+	return fmt.Sprintf("%s/%d", c.IP.String(), c.Prefix)
 }
 
 // IsPrivate returns true if the CIDR is a private address
@@ -27,7 +49,7 @@ func (c *CIDR) IsPrivate() bool {
 	return c.IP.IsPrivate()
 }
 
-type CIDRList []CIDR
+type CIDRList []*CIDR
 
 func (l CIDRList) String() []string {
 	var result []string
@@ -52,16 +74,30 @@ func (f *FQDN) Valid() bool {
 	return true
 }
 
-func getPeers(fqdns []FQDN, ips map[FQDN][]CIDR, private bool) []netv1.NetworkPolicyPeer {
+func isAllowed(cidr *CIDR, globalBlock bool, ruleBlock *bool) bool {
+	block := globalBlock
+	if ruleBlock != nil {
+		block = *ruleBlock
+	}
+	if cidr.IsPrivate() && block {
+		return false
+	}
+	return true
+}
+
+func getPeers(fqdns []FQDN, ips map[FQDN][]*CIDR, globalBlock bool, ruleBlock *bool) []netv1.NetworkPolicyPeer {
 	var peers []netv1.NetworkPolicyPeer
 
 	for _, fqdn := range fqdns {
 		if cidrs, ok := ips[fqdn]; ok {
 			for _, cidr := range cidrs {
-				if !private || !cidr.IsPrivate() {
+				if isAllowed(cidr, globalBlock, ruleBlock) {
 					peers = append(peers, netv1.NetworkPolicyPeer{IPBlock: &netv1.IPBlock{
 						CIDR: cidr.String(),
 					}})
+				} else {
+					logger := logf.FromContext(context.Background())
+					logger.Info("NOT ALLOWED", "fqdn", fqdn, "cidr", cidr, "globalBlock", globalBlock, "ruleBlock", ruleBlock)
 				}
 			}
 		}
@@ -69,20 +105,10 @@ func getPeers(fqdns []FQDN, ips map[FQDN][]CIDR, private bool) []netv1.NetworkPo
 	return peers
 }
 
-func allowsPrivate(allowPrivate bool, rulePrivateBlock *bool) bool {
-	private := allowPrivate
-	if rulePrivateBlock != nil {
-		private = *rulePrivateBlock
-	}
-	return private
-}
-
 // toNetworkPolicyIngressRule converts the IngressRule to a netv1.NetworkPolicyIngressRule.
 // Returns nil if no peers were found.
-func (r *IngressRule) toNetworkPolicyIngressRule(ips map[FQDN][]CIDR, allowPrivate bool) *netv1.NetworkPolicyIngressRule {
-	private := allowsPrivate(allowPrivate, r.BlockPrivateIPs)
-	peers := getPeers(r.FromFQDNS, ips, private)
-
+func (r *IngressRule) toNetworkPolicyIngressRule(ips map[FQDN][]*CIDR, blockPrivate bool) *netv1.NetworkPolicyIngressRule {
+	peers := getPeers(r.FromFQDNS, ips, blockPrivate, r.BlockPrivateIPs)
 	if len(peers) == 0 {
 		return nil
 	}
@@ -95,10 +121,8 @@ func (r *IngressRule) toNetworkPolicyIngressRule(ips map[FQDN][]CIDR, allowPriva
 
 // toNetworkPolicyEgressRule converts the EgressRule to a netv1.NetworkPolicyEgressRule.
 // Returns nil if no peers were found.
-func (r *EgressRule) toNetworkPolicyEgressRule(ips map[FQDN][]CIDR, allowPrivate bool) *netv1.NetworkPolicyEgressRule {
-	private := allowsPrivate(allowPrivate, r.BlockPrivateIPs)
-	peers := getPeers(r.ToFQDNS, ips, private)
-
+func (r *EgressRule) toNetworkPolicyEgressRule(ips map[FQDN][]*CIDR, blockPrivate bool) *netv1.NetworkPolicyEgressRule {
+	peers := getPeers(r.ToFQDNS, ips, blockPrivate, r.BlockPrivateIPs)
 	if len(peers) == 0 {
 		return nil
 	}
@@ -111,7 +135,7 @@ func (r *EgressRule) toNetworkPolicyEgressRule(ips map[FQDN][]CIDR, allowPrivate
 
 // FQDNs Returns all unique FQDNs defined in the network policy
 func (np *NetworkPolicy) FQDNs() []FQDN {
-	var set map[FQDN]struct{}
+	var set = make(map[FQDN]struct{})
 	for _, rule := range np.Spec.Ingress {
 		for _, fqdn := range rule.FromFQDNS {
 			set[fqdn] = struct{}{}
@@ -134,7 +158,7 @@ func (np *NetworkPolicy) FQDNs() []FQDN {
 // Returns nil if neither ingress rules nor egress rules were available.
 // This is to conform with how netv1.NetworkPolicy works: When no ingress nor egress rules are specified, the
 // PolicyTypes defaults to ["Ingress"] which in turn blocks all ingress traffic which is not what we want to do.
-func (np *NetworkPolicy) ToNetworkPolicy(ips map[FQDN][]CIDR) *netv1.NetworkPolicy {
+func (np *NetworkPolicy) ToNetworkPolicy(ips map[FQDN][]*CIDR) *netv1.NetworkPolicy {
 	var ingress []netv1.NetworkPolicyIngressRule
 	for _, fqdnRule := range np.Spec.Ingress {
 		if rule := fqdnRule.toNetworkPolicyIngressRule(ips, np.Spec.BlockPrivateIPs); rule != nil {
@@ -169,8 +193,10 @@ func (np *NetworkPolicy) ToNetworkPolicy(ips map[FQDN][]CIDR) *netv1.NetworkPoli
 	}
 }
 
-type ResolveResultMap map[FQDN][]CIDR
+// ResolveResultMap Maps FQDN's to their resolved IP addresses
+type ResolveResultMap map[FQDN][]*CIDR
 
+// String converts the map cidrs to strings
 func (m ResolveResultMap) String() map[FQDN][]string {
 	result := make(map[FQDN][]string)
 	for k, v := range m {
@@ -179,12 +205,14 @@ func (m ResolveResultMap) String() map[FQDN][]string {
 	return result
 }
 
+// SetStatus Updates all status fields apart from ObservedGeneration and Conditions.
 func (s *NetworkPolicyStatus) SetStatus(
-	allCidrs []CIDR, appliedCidrs []CIDR,
-	resolveResults map[FQDN][]CIDR,
-	errors map[FQDN]string,
+	allCidrs []*CIDR, appliedCidrs []*CIDR,
+	resolveResults map[FQDN][]*CIDR,
+	errors map[FQDN]NetworkPolicyResolveConditionReason,
 ) {
-	s.CurrentAddressesCount = int32(len(appliedCidrs))
+	s.TotalAddressCount = int32(len(allCidrs))
+	s.CurrentAddressCount = int32(len(appliedCidrs))
 	s.BlockedAddressCount = int32(len(allCidrs) - len(appliedCidrs))
 	s.ResolvedAddresses = ResolveResultMap(resolveResults).String()
 	s.LatestErrors = errors

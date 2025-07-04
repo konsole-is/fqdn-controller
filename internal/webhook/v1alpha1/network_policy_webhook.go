@@ -111,18 +111,35 @@ func validateTimeLimits(n *v1alpha1.NetworkPolicy) error {
 	return nil
 }
 
+func validateRuleCount(np *v1alpha1.NetworkPolicy) error {
+	if len(np.Spec.Ingress) == 0 && len(np.Spec.Egress) == 0 {
+		return fmt.Errorf("at least one of Ingress or Egress rule must be specified")
+	}
+	return nil
+}
+
+func defaultValidation(np *v1alpha1.NetworkPolicy) error {
+	if err := validateFQDNs(np); err != nil {
+		return err
+	}
+	if err := validateTimeLimits(np); err != nil {
+		return err
+	}
+	if err := validateRuleCount(np); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type FQDNNetworkPolicy.
 func (v *NetworkPolicyCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	n, ok := obj.(*v1alpha1.NetworkPolicy)
+	np, ok := obj.(*v1alpha1.NetworkPolicy)
 	if !ok {
-		return nil, fmt.Errorf("expected a FQDNNetworkPolicy object but got %T", obj)
+		return nil, fmt.Errorf("expected a NetworkPolicy object but got %T", obj)
 	}
-	networkpolicylog.Info("Validation for FQDNNetworkPolicy upon creation", "name", n.GetName())
+	networkpolicylog.Info("Validation for NetworkPolicy upon creation", "name", np.GetName())
 
-	if err := validateFQDNs(n); err != nil {
-		return nil, err
-	}
-	if err := validateTimeLimits(n); err != nil {
+	if err := defaultValidation(np); err != nil {
 		return nil, err
 	}
 	return nil, nil
@@ -130,16 +147,13 @@ func (v *NetworkPolicyCustomValidator) ValidateCreate(_ context.Context, obj run
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type FQDNNetworkPolicy.
 func (v *NetworkPolicyCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	n, ok := newObj.(*v1alpha1.NetworkPolicy)
+	np, ok := newObj.(*v1alpha1.NetworkPolicy)
 	if !ok {
-		return nil, fmt.Errorf("expected a FQDNNetworkPolicy object for the newObj but got %T", newObj)
+		return nil, fmt.Errorf("expected a NetworkPolicy object for the newObj but got %T", newObj)
 	}
-	networkpolicylog.Info("Validation for FQDNNetworkPolicy upon update", "name", n.GetName())
+	networkpolicylog.Info("Validation for NetworkPolicy upon update", "name", np.GetName())
 
-	if err := validateFQDNs(n); err != nil {
-		return nil, err
-	}
-	if err := validateTimeLimits(n); err != nil {
+	if err := defaultValidation(np); err != nil {
 		return nil, err
 	}
 	return nil, nil
@@ -152,8 +166,6 @@ func (v *NetworkPolicyCustomValidator) ValidateDelete(ctx context.Context, obj r
 		return nil, fmt.Errorf("expected a NetworkPolicy object but got %T", obj)
 	}
 	networkpolicylog.Info("Validation for NetworkPolicy upon deletion", "name", networkpolicy.GetName())
-
-	// TODO(user): fill in your validation logic upon object deletion.
 
 	return nil, nil
 }

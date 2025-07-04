@@ -29,14 +29,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	v1alpha1 "github.com/konsole-is/fqdn-controller/api/v1alpha1"
+	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 )
+
+// DNSResolver resolves domains to IP addresses
+type DNSResolver interface {
+	// Resolve all the given fqdns to a DNSResolverResult
+	Resolve(fqdns []v1alpha1.FQDN, timeout time.Duration, networkType v1alpha1.NetworkType) network.DNSResolverResultList
+}
 
 // NetworkPolicyReconciler reconciles a NetworkPolicy object
 type NetworkPolicyReconciler struct {
 	client.Client
 	Scheme        *runtime.Scheme
 	EventRecorder record.EventRecorder
+	DNSResolver   DNSResolver
 }
 
 // +kubebuilder:rbac:groups=fqdn.konsole.is,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -49,15 +56,16 @@ type NetworkPolicyReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	logger := logf.FromContext(ctx)
 
-	np, err := r.getNetworkPolicy(ctx, req)
-	if err != nil {
-		return ctrl.Result{}, err
+	np := &v1alpha1.NetworkPolicy{}
+	if err := r.Get(ctx, req.NamespacedName, np); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	resolver := network.NewDNSResolver(np.Spec.EnabledNetworkType)
-	results := resolver.Resolve(np.FQDNs(), time.Duration(np.Spec.ResolveTimeoutSeconds)*time.Second)
+	logger.Info("Resolving FQDNS", "fqdns", np.FQDNs())
+	resolveTimeout := time.Duration(np.Spec.ResolveTimeoutSeconds) * time.Second
+	results := r.DNSResolver.Resolve(np.FQDNs(), resolveTimeout, np.Spec.EnabledNetworkType)
 
 	networkPolicy := np.ToNetworkPolicy(results.CIDRLookupTable())
 
@@ -68,21 +76,28 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	resolveStatus := results.AggregatedErrorReason()
 	resolveMessage := results.AggregatedErrorMessage()
+	np.SetResolveCondition(resolveStatus, resolveMessage)
 
-	err = r.reconcileNetworkPolicyCreation(ctx, np, networkPolicy)
-
-	if err != nil {
-		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyFailed, "Failed to reconcile NetworkPolicy")
-		np.SetResolveCondition(resolveStatus, resolveMessage)
+	if networkPolicy == nil {
+		logger.Info("Network policy is nil",
+			"blockedAddressCount", np.Status.BlockedAddressCount,
+			"totalAddressCount", np.Status.TotalAddressCount,
+			"errors", errors,
+		)
+		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyEmptyRules, "Reconciled to an empty NetworkPolicy")
 		if err := r.Client.Status().Update(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: time.Duration(np.Spec.TTLSeconds) * time.Second}, nil
 	}
 
-	if networkPolicy == nil {
-		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyEmptyRules, "Resolve resulted in an empty NetworkPolicy")
-		np.SetResolveCondition(resolveStatus, resolveMessage)
+	logger.V(1).Info("Reconciling network policy",
+		"ingressRuleCount", len(networkPolicy.Spec.Ingress),
+		"egressRuleCount", len(networkPolicy.Spec.Egress),
+	)
+	if err := r.reconcileNetworkPolicyCreation(ctx, np, networkPolicy); err != nil {
+		logger.Error(err, "Creation reconciliation of network policy failed")
+		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyFailed, err.Error())
 		if err := r.Client.Status().Update(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -90,10 +105,10 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	np.SetReadyConditionTrue()
-	np.SetResolveCondition(resolveStatus, resolveMessage)
 	if err := r.Client.Status().Update(ctx, np); err != nil {
 		return ctrl.Result{}, err
 	}
+	logger.Info("Reconciliation succeeded")
 	return ctrl.Result{RequeueAfter: time.Duration(np.Spec.TTLSeconds) * time.Second}, nil
 }
 
@@ -101,21 +116,7 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *NetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.NetworkPolicy{}).
-		Named("networkpolicy").
+		Named("fqdnnetworkpolicy").
 		Owns(&netv1.NetworkPolicy{}).
 		Complete(r)
-}
-
-// ensureControllerReference Sets controller reference on the given object if it has not been done already
-// Returns an error if fails to set controller reference
-func (r *NetworkPolicyReconciler) ensureControllerReference(owner *v1alpha1.NetworkPolicy, object client.Object) error {
-	for _, ref := range object.GetOwnerReferences() {
-		if ref.Controller != nil &&
-			*ref.Controller && ref.UID == owner.GetUID() &&
-			ref.APIVersion == owner.GetObjectKind().GroupVersionKind().GroupVersion().String() &&
-			ref.Kind == owner.GetObjectKind().GroupVersionKind().Kind {
-			return nil
-		}
-	}
-	return ctrl.SetControllerReference(owner, object, r.Scheme)
 }

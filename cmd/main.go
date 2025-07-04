@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"github.com/konsole-is/fqdn-controller/pkg/network"
 	"os"
 	"path/filepath"
 
@@ -207,6 +208,7 @@ func main() {
 		Client:        mgr.GetClient(),
 		Scheme:        mgr.GetScheme(),
 		EventRecorder: mgr.GetEventRecorderFor("fqdn-controller"),
+		DNSResolver:   network.NewDNSResolver(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NetworkPolicy")
 		os.Exit(1)
