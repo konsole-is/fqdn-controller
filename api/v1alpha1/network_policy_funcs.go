@@ -75,11 +75,11 @@ func (f *FQDN) Valid() bool {
 }
 
 func isAllowed(cidr *CIDR, globalBlock bool, ruleBlock *bool) bool {
-	block := globalBlock
+	blockPrivateIP := globalBlock
 	if ruleBlock != nil {
-		block = *ruleBlock
+		blockPrivateIP = *ruleBlock
 	}
-	if cidr.IsPrivate() && block {
+	if cidr.IsPrivate() && blockPrivateIP {
 		return false
 	}
 	return true
@@ -205,16 +205,16 @@ func (m ResolveResultMap) String() map[FQDN][]string {
 	return result
 }
 
-// SetStatus Updates all status fields apart from ObservedGeneration and Conditions.
-func (s *NetworkPolicyStatus) SetStatus(
+// SetStatusFields Updates all status fields apart from ObservedGeneration and Conditions.
+func (s *NetworkPolicyStatus) SetStatusFields(
 	allCidrs []*CIDR, appliedCidrs []*CIDR,
 	resolveResults map[FQDN][]*CIDR,
-	errors map[FQDN]NetworkPolicyResolveConditionReason,
+// errors map[FQDN]NetworkPolicyResolveConditionReason,
 ) {
 	s.TotalAddressCount = int32(len(allCidrs))
-	s.CurrentAddressCount = int32(len(appliedCidrs))
+	s.AppliedAddressCount = int32(len(appliedCidrs))
 	s.BlockedAddressCount = int32(len(allCidrs) - len(appliedCidrs))
 	s.ResolvedAddresses = ResolveResultMap(resolveResults).String()
-	s.LatestErrors = errors
+	//s.LookupErrors = errors
 	s.LatestLookupTime = metav1.NewTime(time.Now())
 }

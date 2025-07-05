@@ -22,6 +22,9 @@ import (
 )
 
 // NetworkType defines the available ip address types to resolve
+//
+//   - Options are one of: 'all', 'ipv4', 'ipv6'
+//
 // +kubebuilder:validation:Enum=all;ipv4;ipv6
 type NetworkType string
 
@@ -49,6 +52,7 @@ func (n NetworkType) ResolverString() string {
 // on the internet. It must consist of one or more labels separated by dots (e.g., "api.example.com"), where each label
 // can contain letters, digits, and hyphens, but cannot start or end with a hyphen. The FQDN must end with a top-level
 // domain (e.g., ".com", ".org") of at least two characters.
+//
 // +kubebuilder:validation:Pattern=`^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
 type FQDN string
 
@@ -85,22 +89,66 @@ type NetworkPolicySpec struct {
 	// Egress defines the outbound network traffic rules for the selected pods
 	Egress []EgressRule `json:"egress,omitempty"`
 	// EnabledNetworkType defines which type of IP addresses to allow.
-	// Options are 'all', 'ipv4' or 'ipv6'
+	//
+	//  - Options are one of: 'all', 'ipv4', 'ipv6'
+	//  - Defaults to 'ipv4' if not specified
+	//
 	// +kubebuilder:default:=ipv4
 	EnabledNetworkType NetworkType `json:"enabledNetworkType,omitempty"`
-	// TTLSeconds The refresh interval on FQDN IP lookups
+	// TTLSeconds The interval at which the IP addresses of the FQDNs are re-evaluated.
+	//
+	//  - Defaults to 300 seconds if not specified.
+	//  - Maximum value is 1800 seconds.
+	//  - Minimum value is 60 seconds.
+	//  - Must be larger than ResolveTimeoutSeconds.
+	//
 	// +kubebuilder:validation:Minimum=60
 	// +kubebuilder:validation:Maximum=1800
 	// +kubebuilder:default:=300
 	TTLSeconds int32 `json:"ttlSeconds,omitempty"`
-	// ResolveTimeoutSeconds The timeout to use for lookups on the FQDNs
+	// ResolveTimeoutSeconds The timeout to use for lookups of the FQDNs
+	//
+	//  - Defaults to 3 seconds if not specified.
+	//  - Maximum value is 60 seconds.
+	//  - Minimum value is 1 second.
+	//  - Must be less than TTLSeconds.
+	//
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=60
 	// +kubebuilder:default:=3
 	ResolveTimeoutSeconds int32 `json:"resolveTimeoutSeconds,omitempty"`
-	// BlockPrivateIPs Ensures that any private IPs are emitted from the rules
-	// +kubebuilder:default:=true
+	// RetryTimeoutSeconds How long the resolving of an individual FQDN should be retried in case of errors before being
+	// removed from the underlying network policy. This ensures intermittent failures in name resolution do not clear
+	// existing addresses causing unwanted service disruption.
+	//
+	//  - Defaults to 3600 (1 hour) if not specified (nil)
+	//  - Maximum value is 86400 (24 hours)
+	//
+	// +kubebuilder:validation:Maximum=86400
+	// +kubebuilder:default:=3600
+	RetryTimeoutSeconds *int32 `json:"retryTimeoutSeconds,omitempty"`
+	// BlockPrivateIPs When set to true, all private IPs are emitted from the rules unless otherwise specified at the
+	// IngressRule or EgressRule level.
+	//
+	// - Defaults to false if not specified
 	BlockPrivateIPs bool `json:"blockPrivateIPs,omitempty"`
+}
+
+// FQDNStatus defines the status of a given FQDN
+// TODO: implement logic for updating status
+// TODO: update tests and reconciler to conform with new approach
+type FQDNStatus struct {
+	// LastSuccessfulTime is the last time the FQDN was resolved successfully. I.e. the last time the ResolveReason was
+	// NetworkPolicyResolveSuccess
+	LastSuccessfulTime metav1.Time `json:"LastSuccessfulTime,omitempty"`
+	// LastTransitionTime is the last time the reason changed
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+	// ResolveReason describes the last resolve status
+	ResolveReason NetworkPolicyResolveConditionReason `json:"resolveReason,omitempty"`
+	// Addresses is the list of resolved addresses for the given FQDN.
+	// The list is cleared if LastSuccessfulTime exceeds the time limit specified by
+	// NetworkPolicySpec.RetryTimeoutSeconds
+	Addresses []string `json:"addresses,omitempty"`
 }
 
 // NetworkPolicyStatus defines the observed state of NetworkPolicy.
@@ -108,21 +156,17 @@ type NetworkPolicyStatus struct {
 	// LatestLookupTime The last time the IPs were resolved
 	LatestLookupTime metav1.Time `json:"latestLookupTime,omitempty"`
 
-	// LatestErrors Maps FQDN's to correlated lookup errors in the last resolve
-	LatestErrors map[FQDN]NetworkPolicyResolveConditionReason `json:"latestErrors,omitempty"`
+	// FQDNs lists the status of each FQDN in the network policy
+	FQDNs map[FQDN]FQDNStatus `json:"fqdns,omitempty"`
 
-	// CurrentAddressCount Counts the number of valid IPs applied in the generated network policy
-	CurrentAddressCount int32 `json:"CurrentAddressCount,omitempty"`
+	// AppliedAddressCount Counts the number of valid IPs applied in the generated network policy
+	AppliedAddressCount int32 `json:"appliedAddressCount,omitempty"`
 
 	// BlockedAddressCount Counts the number of IPs excluded from the network policy due to being private
 	BlockedAddressCount int32 `json:"blockedAddressCount,omitempty"`
 
 	// TotalAddressCount The number of total IPs resolved from the FQDNs before filtering
 	TotalAddressCount int32 `json:"totalAddressesCount,omitempty"`
-
-	// ResolvedAddresses Lists the currently resolved addresses. Note that they may not all be applied to the network
-	// policy due to being private and blocked. Check the underlying network policy to get the exact addresses applied.
-	ResolvedAddresses map[FQDN][]string `json:"resolvedAddresses,omitempty"`
 
 	Conditions         []metav1.Condition `json:"conditions"`
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`

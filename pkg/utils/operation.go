@@ -52,3 +52,11 @@ func OperationMessage(object client.Object, op controllerutil.OperationResult) s
 	}
 	return fmt.Sprintf("%s %s", typeName(object), message)
 }
+
+func DeletionReason(object client.Object) string {
+	return fmt.Sprintf("%sDeleted", typeName(object))
+}
+
+func DeletionMessage(object client.Object) string {
+	return fmt.Sprintf("%s was removed", typeName(object))
+}

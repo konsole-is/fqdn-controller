@@ -802,9 +802,9 @@ func Test_NetworkPolicyStatus_SetStatus(t *testing.T) {
 
 	var status NetworkPolicyStatus
 	before := time.Now()
-	status.SetStatus(allCidrs, appliedCidrs, resolveResults, errors)
+	status.SetStatusFields(allCidrs, appliedCidrs, resolveResults, errors)
 
-	assert.Equal(t, int32(1), status.CurrentAddressCount)
+	assert.Equal(t, int32(1), status.AppliedAddressCount)
 	assert.Equal(t, int32(1), status.BlockedAddressCount)
 	assert.Equal(t, map[FQDN][]string{
 		"test.com": {"10.0.0.1/32", "192.168.1.1/32"},

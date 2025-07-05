@@ -56,64 +56,77 @@ type NetworkPolicyReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := logf.FromContext(ctx)
-
 	np := &v1alpha1.NetworkPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, np); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-
-	logger.Info("Resolving FQDNS", "fqdns", np.FQDNs())
+	// Resolve the FQDNs to IP addresses
 	resolveTimeout := time.Duration(np.Spec.ResolveTimeoutSeconds) * time.Second
 	results := r.DNSResolver.Resolve(np.FQDNs(), resolveTimeout, np.Spec.EnabledNetworkType)
 
+	// Generate a network policy from the FQDN based network policy using the resolved addresses
 	networkPolicy := np.ToNetworkPolicy(results.CIDRLookupTable())
 
-	cidrs := results.CIDRs()
-	errors := results.ErrorLookupTable()
-	applied := utils.UniqueCidrsInNetworkPolicy(networkPolicy)
-	np.Status.SetStatus(cidrs, applied, results.CIDRLookupTable(), errors)
+	// Set the status fields of the fqdn network policy
+	np.Status.SetStatusFields(
+		results.CIDRs(),
+		utils.UniqueCidrsInNetworkPolicy(networkPolicy),
+		results.CIDRLookupTable(),
+		results.ErrorLookupTable(),
+	)
+	// Set the resolve status condition
+	np.SetResolveCondition(
+		results.AggregatedErrorReason(),
+		results.AggregatedErrorMessage(),
+	)
 
-	resolveStatus := results.AggregatedErrorReason()
-	resolveMessage := results.AggregatedErrorMessage()
-	np.SetResolveCondition(resolveStatus, resolveMessage)
+	logger := logf.FromContext(ctx).WithValues(
+		"policy", np.GetName(), "namespace", np.GetNamespace(),
+		"resolved", np.Status.TotalAddressCount,
+		"blocked", np.Status.BlockedAddressCount,
+		"applied", np.Status.AppliedAddressCount,
+	)
+	logf.IntoContext(ctx, logger)
 
+	// The network policy is nil when there are no valid Ingress or Egress rules resolved
+	// We delete the underlying network policy because it is no longer valid and requeue after TTL
 	if networkPolicy == nil {
-		logger.Info("Network policy is nil",
-			"blockedAddressCount", np.Status.BlockedAddressCount,
-			"totalAddressCount", np.Status.TotalAddressCount,
-			"errors", errors,
-		)
-		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyEmptyRules, "Reconciled to an empty NetworkPolicy")
+		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyEmptyRules, "Resolved to an empty NetworkPolicy")
 		if err := r.Client.Status().Update(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
+		if err := r.reconcileNetworkPolicyDeletion(ctx, np); err != nil {
+			return ctrl.Result{}, err
+		}
+		logger.Info("Network policy was empty", "requeueAfter", np.Spec.TTLSeconds)
 		return ctrl.Result{RequeueAfter: time.Duration(np.Spec.TTLSeconds) * time.Second}, nil
 	}
 
-	logger.V(1).Info("Reconciling network policy",
-		"ingressRuleCount", len(networkPolicy.Spec.Ingress),
-		"egressRuleCount", len(networkPolicy.Spec.Egress),
-	)
+	// There are valid Ingress or Egress rules in the network policy, we create or update it
 	if err := r.reconcileNetworkPolicyCreation(ctx, np, networkPolicy); err != nil {
-		logger.Error(err, "Creation reconciliation of network policy failed")
 		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyFailed, err.Error())
 		if err := r.Client.Status().Update(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: time.Duration(np.Spec.TTLSeconds) * time.Second}, nil
+		return ctrl.Result{}, err
 	}
 
+	// Creation succeeded, update the status and requeue after TTL
 	np.SetReadyConditionTrue()
 	if err := r.Client.Status().Update(ctx, np); err != nil {
 		return ctrl.Result{}, err
 	}
-	logger.Info("Reconciliation succeeded")
+	logger.Info("Reconciliation succeeded", "requeueAfter", np.Spec.TTLSeconds)
 	return ctrl.Result{RequeueAfter: time.Duration(np.Spec.TTLSeconds) * time.Second}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *NetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *NetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.Context) error {
+	// Note that we can safely call this from here because we are waiting for leader election in the function
+	// If leader election is not enabled, mrg.Elected() returns once mgr.Start() has been called, which happens
+	// after we return from SetupWithManager
+	r.QueueExistingPoliciesOnLeaderElection(ctx, mgr)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.NetworkPolicy{}).
 		Named("fqdnnetworkpolicy").

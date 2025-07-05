@@ -19,7 +19,6 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -58,14 +57,12 @@ var _ webhook.CustomDefaulter = &NetworkPolicyCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind NetworkPolicy.
 func (d *NetworkPolicyCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	n, ok := obj.(*v1alpha1.NetworkPolicy)
+	np, ok := obj.(*v1alpha1.NetworkPolicy)
 
 	if !ok {
 		return fmt.Errorf("expected an NetworkPolicy object but got %T", obj)
 	}
-	networkpolicylog.Info("Defaulting for NetworkPolicy", "name", n.GetName())
-
-	// TODO(user): fill in your defaulting logic.
+	networkpolicylog.Info("Defaulting for NetworkPolicy", "name", np.GetName())
 
 	return nil
 }

@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"github.com/konsole-is/fqdn-controller/pkg/network"
 	testutils "github.com/konsole-is/fqdn-controller/test/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -30,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -41,12 +41,30 @@ var _ = Describe("NetworkPolicy Controller", func() {
 		const resourceName = "test-resource"
 
 		ctx := context.Background()
+		np := &v1alpha1.NetworkPolicy{}
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		np := &v1alpha1.NetworkPolicy{}
+
+		dnsResolver := &network.FakeDNSResolver{}
+		dnsResolver.SetResults([]*network.DNSResolverResult{
+			{
+				Domain: "example.com",
+				Error:  nil,
+				CIDRs: []*v1alpha1.CIDR{
+					v1alpha1.MustCIDR("0.0.0.0/0"),
+				},
+			},
+			{
+				Domain: "google.com",
+				Error:  nil,
+				CIDRs: []*v1alpha1.CIDR{
+					v1alpha1.MustCIDR("192.168.0.0/32"),
+				},
+			},
+		})
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind NetworkPolicy")
@@ -86,23 +104,6 @@ var _ = Describe("NetworkPolicy Controller", func() {
 
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			dnsResolver := &network.FakeDNSResolver{}
-			dnsResolver.SetResults([]*network.DNSResolverResult{
-				{
-					Domain: "example.com",
-					Error:  nil,
-					CIDRs: []*v1alpha1.CIDR{
-						v1alpha1.MustCIDR("0.0.0.0/0"),
-					},
-				},
-				{
-					Domain: "google.com",
-					Error:  nil,
-					CIDRs: []*v1alpha1.CIDR{
-						v1alpha1.MustCIDR("192.168.0.0/24"),
-					},
-				},
-			})
 			controllerReconciler := &NetworkPolicyReconciler{
 				Client:        k8sClient,
 				Scheme:        k8sClient.Scheme(),
@@ -110,7 +111,7 @@ var _ = Describe("NetworkPolicy Controller", func() {
 				DNSResolver:   dnsResolver,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -118,26 +119,75 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			np := &v1alpha1.NetworkPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, np)
 			Expect(err).NotTo(HaveOccurred())
-			t := GinkgoT()
 
+			t := GinkgoT()
+			By("Validating the ready status condition")
+			cond := meta.FindStatusCondition(np.Status.Conditions, string(v1alpha1.NetworkPolicyReadyCondition))
+			Expect(cond).ToNot(BeNil())
+			t.Log(testutils.PrettyForPrint(cond))
+			Expect(string(cond.Status)).To(Equal(string(corev1.ConditionTrue)))
+			Expect(cond.Reason).To(Equal(string(v1alpha1.NetworkPolicyReady)))
+
+			By("Validating the resolve status condition")
+			cond = meta.FindStatusCondition(np.Status.Conditions, string(v1alpha1.NetworkPolicyResolveCondition))
+			Expect(cond).ToNot(BeNil())
+			t.Log(testutils.PrettyForPrint(cond))
+			Expect(string(cond.Status)).To(Equal(string(corev1.ConditionTrue)))
+			Expect(cond.Reason).To(Equal(string(v1alpha1.NetworkPolicyResolveSuccess)))
+
+			By("Validating the status fields")
+			t.Log(testutils.PrettyForPrint(np.Status))
+			Expect(np.Status.ObservedGeneration).To(Equal(int64(1))) // first successful reconcile -> gen 1
+			Expect(np.Status.LatestErrors).Should(BeEmpty())
+			Expect(np.Status.LatestLookupTime).ToNot(BeZero())
+			Expect(np.Status.AppliedAddressCount).To(Equal(int32(2)))
+			Expect(np.Status.BlockedAddressCount).To(Equal(int32(0)))
+			Expect(np.Status.ResolvedAddresses).To(Equal(map[v1alpha1.FQDN][]string{
+				"example.com": {"0.0.0.0/0"},
+				"google.com":  {"192.168.0.0/32"},
+			}))
+
+			By("Ensuring a requeue was set to TTL")
+			Expect(result.RequeueAfter).To(Equal(time.Duration(np.Spec.TTLSeconds) * time.Second))
+
+			By("Ensuring the underlying network policy was created")
 			networkPolicy := &netv1.NetworkPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, networkPolicy)
 			Expect(err).NotTo(HaveOccurred())
-			t.Log(fmt.Sprintf("%+v", networkPolicy))
+			t.Log(testutils.PrettyForPrint(networkPolicy))
 
-			cond := meta.FindStatusCondition(np.Status.Conditions, string(v1alpha1.NetworkPolicyReadyCondition))
-			t.Log(cond)
-			t.Log(fmt.Sprintf("%+v", np.Status))
-			Expect(cond).ToNot(BeNil())
-			Expect(string(cond.Status)).To(Equal(string(corev1.ConditionTrue)))
-			Expect(np.Status.ObservedGeneration).To(BeZero()) // first edit is gen 0
-			Expect(np.Status.LatestErrors).Should(BeEmpty())
-			Expect(np.Status.LatestLookupTime).ToNot(BeZero())
-			Expect(np.Status.CurrentAddressCount).To(Equal(2))
-			Expect(np.Status.BlockedAddressCount).To(Equal(0))
-			Expect(np.Status.ResolvedAddresses).To(Equal(map[v1alpha1.FQDN]string{
-				"example.com": "0.0.0.0/0",
-				"google.com":  "192.168.12.2/32",
+			By("Ensuring the underlying network policy has the correct pod selector")
+			Expect(networkPolicy.Spec.PodSelector).To(Equal(testutils.PodSelector("foo", "bar")))
+
+			By("Ensuring the underlying network policy has the correct ingress rules")
+			Expect(networkPolicy.Spec.Ingress).To(HaveLen(1))
+			Expect(networkPolicy.Spec.Ingress[0]).To(Equal(netv1.NetworkPolicyIngressRule{
+				Ports: []netv1.NetworkPolicyPort{
+					testutils.TCPNetworkPolicyPort(80, 80),
+					testutils.TCPNetworkPolicyPort(443, 443),
+				},
+				From: []netv1.NetworkPolicyPeer{
+					{
+						IPBlock: &netv1.IPBlock{
+							CIDR: "0.0.0.0/0",
+						},
+					},
+				},
+			}))
+			By("Ensuring the underlying network policy has the correct egress rules")
+			Expect(networkPolicy.Spec.Egress).To(HaveLen(1))
+			Expect(networkPolicy.Spec.Egress[0]).To(Equal(netv1.NetworkPolicyEgressRule{
+				Ports: []netv1.NetworkPolicyPort{
+					testutils.TCPNetworkPolicyPort(80, 80),
+					testutils.TCPNetworkPolicyPort(443, 443),
+				},
+				To: []netv1.NetworkPolicyPeer{
+					{
+						IPBlock: &netv1.IPBlock{
+							CIDR: "192.168.0.0/32",
+						},
+					},
+				},
 			}))
 		})
 	})
