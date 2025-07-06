@@ -21,6 +21,7 @@ import (
 	"github.com/konsole-is/fqdn-controller/pkg/network"
 	"github.com/konsole-is/fqdn-controller/pkg/utils"
 	netv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	"time"
 
@@ -35,15 +36,22 @@ import (
 // DNSResolver resolves domains to IP addresses
 type DNSResolver interface {
 	// Resolve all the given fqdns to a DNSResolverResult
-	Resolve(fqdns []v1alpha1.FQDN, timeout time.Duration, networkType v1alpha1.NetworkType) network.DNSResolverResultList
+	Resolve(
+		ctx context.Context,
+		timeout time.Duration,
+		maxConcurrent int,
+		networkType v1alpha1.NetworkType,
+		fqdns []v1alpha1.FQDN,
+	) network.DNSResolverResultList
 }
 
 // NetworkPolicyReconciler reconciles a NetworkPolicy object
 type NetworkPolicyReconciler struct {
 	client.Client
-	Scheme        *runtime.Scheme
-	EventRecorder record.EventRecorder
-	DNSResolver   DNSResolver
+	Scheme                *runtime.Scheme
+	EventRecorder         record.EventRecorder
+	DNSResolver           DNSResolver
+	MaxConcurrentResolves int
 }
 
 // +kubebuilder:rbac:groups=fqdn.konsole.is,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -60,30 +68,35 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := r.Get(ctx, req.NamespacedName, np); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
 	// Resolve the FQDNs to IP addresses
 	resolveTimeout := time.Duration(np.Spec.ResolveTimeoutSeconds) * time.Second
-	results := r.DNSResolver.Resolve(np.FQDNs(), resolveTimeout, np.Spec.EnabledNetworkType)
+	results := r.DNSResolver.Resolve(
+		ctx, resolveTimeout, r.MaxConcurrentResolves, np.Spec.EnabledNetworkType, np.FQDNs(),
+	)
+
+	np.Status.FQDNs = updateFQDNStatuses(
+		r.EventRecorder, np, np.Status.FQDNs, results, int(*np.Spec.RetryTimeoutSeconds),
+	)
 
 	// Generate a network policy from the FQDN based network policy using the resolved addresses
-	networkPolicy := np.ToNetworkPolicy(results.CIDRLookupTable())
+	networkPolicy := np.ToNetworkPolicy(np.Status.FQDNs)
 
-	// Set the status fields of the fqdn network policy
-	np.Status.SetStatusFields(
-		results.CIDRs(),
-		utils.UniqueCidrsInNetworkPolicy(networkPolicy),
-		results.CIDRLookupTable(),
-		results.ErrorLookupTable(),
-	)
+	np.Status.TotalAddressCount = int32(len(results.CIDRs()))
+	np.Status.AppliedAddressCount = int32(len(utils.UniqueCidrsInNetworkPolicy(networkPolicy)))
+	np.Status.LatestLookupTime = metav1.NewTime(time.Now())
+
 	// Set the resolve status condition
+	resolveStatus := results.AggregatedResolveStatus()
 	np.SetResolveCondition(
-		results.AggregatedErrorReason(),
-		results.AggregatedErrorMessage(),
+		resolveStatus,
+		results.AggregatedResolveMessage(),
 	)
 
 	logger := logf.FromContext(ctx).WithValues(
 		"policy", np.GetName(), "namespace", np.GetNamespace(),
+		"status", resolveStatus,
 		"resolved", np.Status.TotalAddressCount,
-		"blocked", np.Status.BlockedAddressCount,
 		"applied", np.Status.AppliedAddressCount,
 	)
 	logf.IntoContext(ctx, logger)
@@ -125,7 +138,9 @@ func (r *NetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager, ctx context
 	// Note that we can safely call this from here because we are waiting for leader election in the function
 	// If leader election is not enabled, mrg.Elected() returns once mgr.Start() has been called, which happens
 	// after we return from SetupWithManager
-	r.QueueExistingPoliciesOnLeaderElection(ctx, mgr)
+	go func() {
+		r.queueExistingPoliciesOnLeaderElection(ctx, mgr)
+	}()
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.NetworkPolicy{}).

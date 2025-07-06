@@ -3,154 +3,112 @@ package network
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net"
 	"testing"
 	"time"
 )
 
-func TestDNSResolverResult_IsError(t *testing.T) {
-	result := &DNSResolverResult{}
-	assert.False(t, result.IsError(), "expected no error")
-
-	result.Error = errors.New("fail")
-	assert.True(t, result.IsError(), "expected error")
-}
-
-func TestDNSResolverResult_ErrorReason(t *testing.T) {
-	domain := v1alpha1.FQDN("test.com")
-
+func TestDNSResolverResult_resolveReason(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    *DNSResolverResult
+		input    error
 		expected v1alpha1.NetworkPolicyResolveConditionReason
 	}{
 		{
 			name:     "no error",
-			input:    &DNSResolverResult{Domain: domain},
+			input:    nil,
 			expected: v1alpha1.NetworkPolicyResolveSuccess,
 		},
 		{
-			name: "lookupError with reason",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error:  &lookupError{Reason: v1alpha1.NetworkPolicyResolveInvalidDomain},
-			},
+			name:     "lookupError with reason",
+			input:    &lookupError{Reason: v1alpha1.NetworkPolicyResolveInvalidDomain},
 			expected: v1alpha1.NetworkPolicyResolveInvalidDomain,
 		},
 		{
 			name: "dns timeout error",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error: &net.DNSError{
-					IsTimeout: true,
-				},
+			input: &net.DNSError{
+				IsTimeout: true,
 			},
 			expected: v1alpha1.NetworkPolicyResolveTimeout,
 		},
 		{
 			name: "dns not found",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error: &net.DNSError{
-					IsNotFound: true,
-				},
+			input: &net.DNSError{
+				IsNotFound: true,
 			},
 			expected: v1alpha1.NetworkPolicyResolveTimeout, // your logic maps this too
 		},
 		{
 			name: "dns temporary",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error: &net.DNSError{
-					IsTemporary: true,
-				},
+			input: &net.DNSError{
+				IsTemporary: true,
 			},
 			expected: v1alpha1.NetworkPolicyResolveTemporaryError,
 		},
 		{
-			name: "other error",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error:  errors.New("something went wrong"),
-			},
+			name:     "other error",
+			input:    errors.New("something went wrong"),
 			expected: v1alpha1.NetworkPolicyResolveOtherError,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.input.ErrorReason())
+			assert.Equal(t, tt.expected, resolveReason(tt.input))
 		})
 	}
 }
 
-func TestDNSResolverResult_ErrorMessage(t *testing.T) {
-	domain := v1alpha1.FQDN("foo.test")
-
+func TestDNSResolverResult_reasonMessage(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    *DNSResolverResult
+		input    error
 		expected string
 	}{
 		{
 			name:     "no error",
-			input:    &DNSResolverResult{Domain: domain},
-			expected: "",
+			input:    nil,
+			expected: "Resolve succeeded",
 		},
 		{
-			name: "lookupError",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error:  &lookupError{Reason: v1alpha1.NetworkPolicyResolveDomainNotFound, Message: "lookup error"},
-			},
+			name:     "lookupError",
+			input:    &lookupError{Reason: v1alpha1.NetworkPolicyResolveDomainNotFound, Message: "lookup error"},
 			expected: "lookup error",
 		},
 		{
 			name: "dns timeout",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error: &net.DNSError{
-					IsTimeout: true,
-				},
+			input: &net.DNSError{
+				IsTimeout: true,
 			},
-			expected: fmt.Sprintf("Timeout waiting for DNS lookup for %s", domain),
+			expected: "Timeout waiting for DNS response",
 		},
 		{
 			name: "dns not found",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error: &net.DNSError{
-					IsNotFound: true,
-				},
+			input: &net.DNSError{
+				IsNotFound: true,
 			},
-			expected: fmt.Sprintf("DNS resolution for %s not found (NXDOMAIN)", domain),
+			expected: "Domain not found",
 		},
 		{
 			name: "dns temporary",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error: &net.DNSError{
-					IsTemporary: true,
-				},
+			input: &net.DNSError{
+				IsTemporary: true,
 			},
-			expected: fmt.Sprintf("Temporary failure in name resolution for %s", domain),
+			expected: "Temporary failure in name resolution",
 		},
 		{
-			name: "generic error",
-			input: &DNSResolverResult{
-				Domain: domain,
-				Error:  errors.New("something else failed"),
-			},
+			name:     "generic error",
+			input:    errors.New("something else failed"),
 			expected: "something else failed",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.input.ErrorMessage())
+			assert.Equal(t, tt.expected, resolveMessage(tt.input))
 		})
 	}
 }
@@ -171,53 +129,39 @@ func Test_DNSResolverResultList_CIDRs(t *testing.T) {
 	assert.Equal(t, "2.2.2.2", cidrs[1].IP.String())
 }
 
-func Test_DNSResolverResultList_Errors(t *testing.T) {
+func Test_DNSResolverResultList_AggregatedResolveReason(t *testing.T) {
 	list := DNSResolverResultList{
-		{Domain: "ok.com"},
-		{Domain: "fail.com", Error: errors.New("failed")},
+		{Status: v1alpha1.NetworkPolicyResolveSuccess},
+		{Status: v1alpha1.NetworkPolicyResolveOtherError}, // Highest Priority
+		{Status: v1alpha1.NetworkPolicyResolveTemporaryError},
+		{Status: v1alpha1.NetworkPolicyResolveSuccess},
 	}
-	errs := list.Errors()
-	assert.Len(t, errs, 1)
-	assert.Equal(t, v1alpha1.FQDN("fail.com"), errs[0].Domain)
+	reason := list.AggregatedResolveStatus()
+	assert.Equal(t, v1alpha1.NetworkPolicyResolveOtherError, reason)
 }
 
-func Test_DNSResolverResultList_AggregatedErrorReason(t *testing.T) {
+func Test_DNSResolverResultList_AggregatedResolveMessage(t *testing.T) {
 	list := DNSResolverResultList{
-		{Error: &net.DNSError{IsTemporary: true}},
-		{Error: &net.DNSError{IsTimeout: true}}, // Higher Priority
+		{Status: v1alpha1.NetworkPolicyResolveSuccess, Message: "Not this"},
+		{Status: v1alpha1.NetworkPolicyResolveOtherError, Message: "This"}, // Highest Priority
+		{Status: v1alpha1.NetworkPolicyResolveTemporaryError, Message: "Not this"},
+		{Status: v1alpha1.NetworkPolicyResolveSuccess, Message: "Not this"},
 	}
-	reason := list.AggregatedErrorReason()
-	assert.Equal(t, v1alpha1.NetworkPolicyResolveTimeout, reason)
+	msg := list.AggregatedResolveMessage()
+	assert.Contains(t, msg, "This")
 }
 
-func Test_DNSResolverResultList_AggregatedErrorMessage(t *testing.T) {
-	list := DNSResolverResultList{
-		{Domain: "a.test", Error: &net.DNSError{IsTemporary: true}},
-		{Domain: "b.test", Error: &net.DNSError{IsTimeout: true}}, // Higher priority
-	}
-	msg := list.AggregatedErrorMessage()
-	assert.Contains(t, msg, "Timeout")
-	assert.Contains(t, msg, "b.test")
-}
-
-func Test_DNSResolverResultList_CIDRLookupTable(t *testing.T) {
+func Test_DNSResolverResultList_LookupTable(t *testing.T) {
 	list := DNSResolverResultList{
 		{Domain: "ok.com", CIDRs: []*v1alpha1.CIDR{makeCIDR("8.8.8.8/32")}},
 		{Domain: "fail.com", Error: errors.New("bad")},
 	}
-	table := list.CIDRLookupTable()
-	assert.Len(t, table, 1)
+	table := list.LookupTable()
+	assert.Len(t, table, 2)
 	assert.Contains(t, table, v1alpha1.FQDN("ok.com"))
-}
-
-func Test_DNSResolverResultList_ErrorLookupTable(t *testing.T) {
-	list := DNSResolverResultList{
-		{Domain: "ok.com"},
-		{Domain: "fail.com", Error: &net.DNSError{IsTimeout: true}},
-	}
-	table := list.ErrorLookupTable()
-	assert.Len(t, table, 1)
-	assert.Equal(t, v1alpha1.NetworkPolicyResolveTimeout, table["fail.com"])
+	assert.Equal(t, v1alpha1.FQDN("ok.com"), table["ok.com"].Domain)
+	assert.Contains(t, table, v1alpha1.FQDN("fail.com"))
+	assert.Equal(t, v1alpha1.FQDN("fail.com"), table["fail.com"].Domain)
 }
 
 // fakeResolver returns a predefined list of IPs and an optional error.
@@ -226,7 +170,7 @@ type fakeResolver struct {
 	err     error
 }
 
-func (f *fakeResolver) LookupIP(ctx context.Context, network, host string) ([]net.IP, error) {
+func (f *fakeResolver) LookupIP(_ context.Context, _ string, _ string) ([]net.IP, error) {
 	return f.results, f.err
 }
 
@@ -309,10 +253,12 @@ func TestDNSResolver_Resolve(t *testing.T) {
 		}
 
 		resolver := &DNSResolver{resolver: fake}
-		result := resolver.Resolve([]v1alpha1.FQDN{"example.com"}, time.Second, v1alpha1.Ipv4)
+		result := resolver.Resolve(
+			context.Background(), time.Second, 1, v1alpha1.Ipv4, []v1alpha1.FQDN{"example.com"},
+		)
 
 		assert.Len(t, result, 1)
-		assert.False(t, result[0].IsError())
+		require.NoError(t, result[0].Error)
 		assert.Equal(t, "example.com", string(result[0].Domain))
 		assert.Len(t, result[0].CIDRs, 1)
 		assert.Equal(t, "1.2.3.4", result[0].CIDRs[0].IP.String())
@@ -329,10 +275,12 @@ func TestDNSResolver_Resolve(t *testing.T) {
 		}
 
 		resolver := &DNSResolver{resolver: fake}
-		result := resolver.Resolve([]v1alpha1.FQDN{invalidFQDN}, time.Second, v1alpha1.All)
+		result := resolver.Resolve(
+			context.Background(), time.Second, 1, v1alpha1.All, []v1alpha1.FQDN{invalidFQDN},
+		)
 
 		assert.Len(t, result, 1)
-		assert.True(t, result[0].IsError())
+		require.Error(t, result[0].Error)
 		assert.Equal(t, invalidFQDN, result[0].Domain)
 
 		var lookupErr *lookupError
@@ -350,12 +298,14 @@ func TestDNSResolver_Resolve(t *testing.T) {
 
 		resolver := &DNSResolver{resolver: fake}
 		start := time.Now()
-		result := resolver.Resolve([]v1alpha1.FQDN{"timeout.com"}, 100*time.Millisecond, v1alpha1.All)
+		result := resolver.Resolve(
+			context.Background(), 100*time.Millisecond, 1, v1alpha1.All, []v1alpha1.FQDN{"timeout.com"},
+		)
 		elapsed := time.Since(start)
 
 		assert.Less(t, elapsed, 500*time.Millisecond, "Should timeout early")
 		assert.Len(t, result, 1)
-		assert.True(t, result[0].IsError())
+		require.Error(t, result[0].Error)
 		assert.True(t, errors.Is(result[0].Error, context.DeadlineExceeded))
 	})
 }

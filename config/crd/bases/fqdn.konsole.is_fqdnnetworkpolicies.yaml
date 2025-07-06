@@ -262,7 +262,7 @@ spec:
                    - Defaults to 300 seconds if not specified.
                    - Maximum value is 1800 seconds.
                    - Minimum value is 60 seconds.
-                   - Must be larger than ResolveTimeoutSeconds.
+                   - Must be greater than ResolveTimeoutSeconds.
                 format: int32
                 maximum: 1800
                 minimum: 60
@@ -274,13 +274,8 @@ spec:
             description: NetworkPolicyStatus defines the observed state of NetworkPolicy.
             properties:
               appliedAddressCount:
-                description: AppliedAddressCount Counts the number of valid IPs applied
+                description: AppliedAddressCount Counts the number of unique IPs applied
                   in the generated network policy
-                format: int32
-                type: integer
-              blockedAddressCount:
-                description: BlockedAddressCount Counts the number of IPs excluded
-                  from the network policy due to being private
                 format: int32
                 type: integer
               conditions:
@@ -339,29 +334,45 @@ spec:
                   - type
                   type: object
                 type: array
-              latestErrors:
-                additionalProperties:
+              fqdns:
+                description: FQDNs lists the status of each FQDN in the network policy
+                items:
+                  description: FQDNStatus defines the status of a given FQDN
                   properties:
-                    addresses:
-                      description: Addresses is the list of resolved addresses for
-                        the given FQDN
-                      items:
-                        description: |-
-                          CIDR represents a network range in CIDR (Classless Inter-Domain Routing) notation.
-                          It consists of an IP address and a Prefix (prefix length) that defines the size of the network.
-                        type: object
-                      type: array
-                    reason:
-                      description: Reason for the status
+                    LastSuccessfulTime:
+                      description: |-
+                        LastSuccessfulTime is the last time the FQDN was resolved successfully. I.e. the last time the ResolveReason was
+                        NetworkPolicyResolveSuccess
+                      format: date-time
                       type: string
-                    since:
-                      description: LastTransitionTime is the last time the FQDN status
+                    addresses:
+                      description: |-
+                        Addresses is the list of resolved addresses for the given FQDN.
+                        The list is cleared if LastSuccessfulTime exceeds the time limit specified by
+                        NetworkPolicySpec.RetryTimeoutSeconds
+                      items:
+                        type: string
+                      type: array
+                    fqdn:
+                      description: FQDN the FQDN this status refers to
+                      pattern: ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$
+                      type: string
+                    lastTransitionTime:
+                      description: LastTransitionTime is the last time the reason
                         changed
                       format: date-time
                       type: string
+                    resolveMessage:
+                      description: ResolveMessage a message describing the reason
+                        for the status
+                      type: string
+                    resolveReason:
+                      description: ResolveReason describes the last resolve status
+                      type: string
+                  required:
+                  - fqdn
                   type: object
-                description: ResolveStatus Maps FQDN's to correlated statuses
-                type: object
+                type: array
               latestLookupTime:
                 description: LatestLookupTime The last time the IPs were resolved
                 format: date-time
@@ -369,15 +380,6 @@ spec:
               observedGeneration:
                 format: int64
                 type: integer
-              resolvedAddresses:
-                additionalProperties:
-                  items:
-                    type: string
-                  type: array
-                description: |-
-                  ResolvedAddresses Lists the currently resolved addresses. Note that they may not all be applied to the network
-                  policy due to being private and blocked. Check the underlying network policy to get the exact addresses applied.
-                type: object
               totalAddressesCount:
                 description: TotalAddressCount The number of total IPs resolved from
                   the FQDNs before filtering

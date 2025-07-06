@@ -25,7 +25,7 @@ func (r *NetworkPolicyReconciler) reconcileNetworkPolicyCreation(
 		current.Labels = networkPolicy.Labels
 		current.Annotations = networkPolicy.Annotations
 		current.Spec = networkPolicy.Spec
-		return ctrl.SetControllerReference(np, networkPolicy, r.Scheme)
+		return ctrl.SetControllerReference(np, current, r.Scheme)
 	})
 	if err != nil {
 		r.EventRecorder.Event(

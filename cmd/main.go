@@ -66,6 +66,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var maxConcurrentResolves int
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -83,6 +84,8 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.IntVar(&maxConcurrentResolves, "max-concurrent-resolves", 8,
+		"How many goroutines can be spawned to resolve FQDNs to IP addresses.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -90,6 +93,10 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if maxConcurrentResolves <= 0 {
+		maxConcurrentResolves = 1
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -207,10 +214,11 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	if err := (&controller.NetworkPolicyReconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		EventRecorder: mgr.GetEventRecorderFor("fqdn-controller"),
-		DNSResolver:   network.NewDNSResolver(),
+		Client:                mgr.GetClient(),
+		Scheme:                mgr.GetScheme(),
+		EventRecorder:         mgr.GetEventRecorderFor("fqdn-controller"),
+		DNSResolver:           network.NewDNSResolver(),
+		MaxConcurrentResolves: maxConcurrentResolves,
 	}).SetupWithManager(mgr, ctx); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NetworkPolicy")
 		os.Exit(1)

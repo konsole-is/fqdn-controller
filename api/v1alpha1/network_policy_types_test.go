@@ -48,3 +48,34 @@ func Test_NetworkPolicyResolveConditionReason_Priority(t *testing.T) {
 		})
 	}
 }
+
+func Test_NetworkPolicyResolveConditionReason_Transient(t *testing.T) {
+	tests := []struct {
+		name     string
+		reason   NetworkPolicyResolveConditionReason
+		expected bool
+	}{
+		{
+			name:     "InvalidDomain is not transient",
+			reason:   NetworkPolicyResolveInvalidDomain,
+			expected: false,
+		},
+		{
+			name:     "DomainNotFound is not transient",
+			reason:   NetworkPolicyResolveDomainNotFound,
+			expected: false,
+		},
+		{
+			name:     "Unknown reason is transient",
+			reason:   "FooBar", // arbitrary string not matched by switch
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := tt.reason.Transient()
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}

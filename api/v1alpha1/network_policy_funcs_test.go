@@ -164,42 +164,42 @@ func Test_isAllowed(t *testing.T) {
 		name               string
 		globalBlockPrivate bool
 		ruleBlockPrivate   *bool
-		cidr               *CIDR
+		cidr               string
 		isAllowed          bool
 	}{
 		{
 			name:               "global true, rule nil (private IP)",
 			globalBlockPrivate: true,
 			ruleBlockPrivate:   nil,
-			cidr:               MustCIDR("192.168.1.1/32"),
+			cidr:               "192.168.1.1/32",
 			isAllowed:          false,
 		},
 		{
 			name:               "global false, rule nil (private IP)",
 			globalBlockPrivate: false,
 			ruleBlockPrivate:   nil,
-			cidr:               MustCIDR("192.168.1.1/32"),
+			cidr:               "192.168.1.1/32",
 			isAllowed:          true,
 		},
 		{
 			name:               "global true, rule false (private IP)",
 			globalBlockPrivate: true,
 			ruleBlockPrivate:   &falseVal,
-			cidr:               MustCIDR("192.168.1.1/32"),
+			cidr:               "192.168.1.1/32",
 			isAllowed:          true,
 		},
 		{
 			name:               "global false, rule true (private IP)",
 			globalBlockPrivate: false,
 			ruleBlockPrivate:   &trueVal,
-			cidr:               MustCIDR("192.168.1.1/32"),
+			cidr:               "192.168.1.1/32",
 			isAllowed:          false,
 		},
 		{
 			name:               "public IP always allowed",
 			globalBlockPrivate: true,
 			ruleBlockPrivate:   nil,
-			cidr:               MustCIDR("8.8.8.8/32"),
+			cidr:               "8.8.8.8/32",
 			isAllowed:          true,
 		},
 	}
@@ -213,20 +213,13 @@ func Test_isAllowed(t *testing.T) {
 }
 
 func Test_getPeers(t *testing.T) {
-	makeCIDR := func(ip string, prefix int) *CIDR {
-		return &CIDR{
-			IP:     net.ParseIP(ip),
-			Prefix: prefix,
-		}
-	}
-
 	trueVal := true
 	falseVal := false
 
 	tests := []struct {
 		name        string
 		fqdns       []FQDN
-		ips         map[FQDN][]*CIDR
+		ips         map[FQDN]*FQDNStatus
 		globalBlock bool
 		ruleBlock   *bool
 		expected    []string
@@ -236,10 +229,12 @@ func Test_getPeers(t *testing.T) {
 			fqdns:       []FQDN{"example.com"},
 			globalBlock: false,
 			ruleBlock:   nil,
-			ips: map[FQDN][]*CIDR{
+			ips: map[FQDN]*FQDNStatus{
 				"example.com": {
-					makeCIDR("192.168.1.1", 32),
-					makeCIDR("8.8.8.8", 32),
+					Addresses: []string{
+						MustCIDR("192.168.1.1/32").String(),
+						MustCIDR("8.8.8.8/32").String(),
+					},
 				},
 			},
 			expected: []string{"192.168.1.1/32", "8.8.8.8/32"},
@@ -249,10 +244,12 @@ func Test_getPeers(t *testing.T) {
 			fqdns:       []FQDN{"example.com"},
 			globalBlock: true,
 			ruleBlock:   nil,
-			ips: map[FQDN][]*CIDR{
+			ips: map[FQDN]*FQDNStatus{
 				"example.com": {
-					makeCIDR("192.168.1.1", 32),
-					makeCIDR("8.8.8.8", 32),
+					Addresses: []string{
+						MustCIDR("192.168.1.1/32").String(),
+						MustCIDR("8.8.8.8/32").String(),
+					},
 				},
 			},
 			expected: []string{"8.8.8.8/32"},
@@ -262,8 +259,10 @@ func Test_getPeers(t *testing.T) {
 			fqdns:       []FQDN{"missing.com"},
 			globalBlock: true,
 			ruleBlock:   nil,
-			ips: map[FQDN][]*CIDR{
-				"example.com": {makeCIDR("1.1.1.1", 32)},
+			ips: map[FQDN]*FQDNStatus{
+				"example.com": {
+					Addresses: []string{MustCIDR("1.1.1.1/32").String()},
+				},
 			},
 			expected: []string{},
 		},
@@ -272,11 +271,15 @@ func Test_getPeers(t *testing.T) {
 			fqdns:       []FQDN{"example.com", "google.com"},
 			globalBlock: true,
 			ruleBlock:   nil,
-			ips: map[FQDN][]*CIDR{
-				"example.com": {makeCIDR("8.8.8.8", 32)},
+			ips: map[FQDN]*FQDNStatus{
+				"example.com": {
+					Addresses: []string{MustCIDR("8.8.8.8/32").String()},
+				},
 				"google.com": {
-					makeCIDR("10.0.0.1", 32),
-					makeCIDR("1.1.1.1", 32),
+					Addresses: []string{
+						MustCIDR("10.0.0.1/32").String(),
+						MustCIDR("1.1.1.1/32").String(),
+					},
 				},
 			},
 			expected: []string{"8.8.8.8/32", "1.1.1.1/32"},
@@ -286,23 +289,27 @@ func Test_getPeers(t *testing.T) {
 			fqdns:       []FQDN{"example.com"},
 			globalBlock: true,
 			ruleBlock:   &falseVal,
-			ips: map[FQDN][]*CIDR{
+			ips: map[FQDN]*FQDNStatus{
 				"example.com": {
-					makeCIDR("10.0.0.1", 32),
-					makeCIDR("8.8.4.4", 32),
+					Addresses: []string{
+						MustCIDR("192.168.1.1/32").String(),
+						MustCIDR("8.8.8.8/32").String(),
+					},
 				},
 			},
-			expected: []string{"10.0.0.1/32", "8.8.4.4/32"},
+			expected: []string{"192.168.1.1/32", "8.8.8.8/32"},
 		},
 		{
 			name:        "rule override: block private even if global allows",
 			fqdns:       []FQDN{"example.com"},
 			globalBlock: false,
 			ruleBlock:   &trueVal,
-			ips: map[FQDN][]*CIDR{
+			ips: map[FQDN]*FQDNStatus{
 				"example.com": {
-					makeCIDR("10.0.0.1", 32),
-					makeCIDR("1.1.1.1", 32),
+					Addresses: []string{
+						"10.0.0.1/32",
+						"1.1.1.1/32",
+					},
 				},
 			},
 			expected: []string{"1.1.1.1/32"},
@@ -335,7 +342,7 @@ func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
 	tests := []struct {
 		name         string
 		rule         IngressRule
-		ipMap        map[FQDN][]*CIDR
+		ipMap        map[FQDN]*FQDNStatus
 		blockPrivate bool
 		expectNil    bool
 		expectCIDRs  []string
@@ -345,7 +352,7 @@ func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
 			rule: IngressRule{
 				FromFQDNS: []FQDN{"missing.com"},
 			},
-			ipMap:        map[FQDN][]*CIDR{},
+			ipMap:        map[FQDN]*FQDNStatus{},
 			blockPrivate: false,
 			expectNil:    true,
 		},
@@ -354,8 +361,10 @@ func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
 			rule: IngressRule{
 				FromFQDNS: []FQDN{"public.com"},
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"public.com": {MustCIDR("8.8.8.8/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"public.com": {
+					Addresses: []string{"8.8.8.8/32"},
+				},
 			},
 			blockPrivate: false,
 			expectCIDRs:  []string{"8.8.8.8/32"},
@@ -365,8 +374,10 @@ func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
 			rule: IngressRule{
 				FromFQDNS: []FQDN{"private.com"},
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"private.com": {MustCIDR("192.168.0.1/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"private.com": {
+					Addresses: []string{"192.168.0.1/32"},
+				},
 			},
 			blockPrivate: true,
 			expectNil:    true,
@@ -377,8 +388,10 @@ func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
 				FromFQDNS:       []FQDN{"private.com"},
 				BlockPrivateIPs: boolPtr(true),
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"private.com": {MustCIDR("192.168.0.1/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"private.com": {
+					Addresses: []string{"192.168.0.1/32"},
+				},
 			},
 			blockPrivate: false,
 			expectNil:    true,
@@ -389,8 +402,10 @@ func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
 				FromFQDNS:       []FQDN{"private.com"},
 				BlockPrivateIPs: boolPtr(false),
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"private.com": {MustCIDR("192.168.0.1/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"private.com": {
+					Addresses: []string{"192.168.0.1/32"},
+				},
 			},
 			blockPrivate: true,
 			expectCIDRs:  []string{"192.168.0.1/32"},
@@ -403,8 +418,10 @@ func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
 					{Port: intStrPtr(80)},
 				},
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"test.com": {MustCIDR("1.2.3.4/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"test.com": {
+					Addresses: []string{"1.2.3.4/32"},
+				},
 			},
 			blockPrivate: false,
 			expectCIDRs:  []string{"1.2.3.4/32"},
@@ -433,12 +450,11 @@ func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
 		})
 	}
 }
-
 func Test_EgressRule_toNetworkPolicyEgressRule(t *testing.T) {
 	tests := []struct {
 		name         string
 		rule         EgressRule
-		ipMap        map[FQDN][]*CIDR
+		ipMap        map[FQDN]*FQDNStatus
 		blockPrivate bool
 		expectNil    bool
 		expectCIDRs  []string
@@ -448,7 +464,7 @@ func Test_EgressRule_toNetworkPolicyEgressRule(t *testing.T) {
 			rule: EgressRule{
 				ToFQDNS: []FQDN{"missing.com"},
 			},
-			ipMap:        map[FQDN][]*CIDR{},
+			ipMap:        map[FQDN]*FQDNStatus{},
 			blockPrivate: false,
 			expectNil:    true,
 		},
@@ -457,8 +473,10 @@ func Test_EgressRule_toNetworkPolicyEgressRule(t *testing.T) {
 			rule: EgressRule{
 				ToFQDNS: []FQDN{"public.com"},
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"public.com": {MustCIDR("8.8.8.8/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"public.com": {
+					Addresses: []string{MustCIDR("8.8.8.8/32").String()},
+				},
 			},
 			blockPrivate: false,
 			expectCIDRs:  []string{"8.8.8.8/32"},
@@ -468,8 +486,10 @@ func Test_EgressRule_toNetworkPolicyEgressRule(t *testing.T) {
 			rule: EgressRule{
 				ToFQDNS: []FQDN{"private.com"},
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"private.com": {MustCIDR("192.168.0.1/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"private.com": {
+					Addresses: []string{MustCIDR("192.168.0.1/32").String()},
+				},
 			},
 			blockPrivate: true,
 			expectNil:    true,
@@ -480,8 +500,10 @@ func Test_EgressRule_toNetworkPolicyEgressRule(t *testing.T) {
 				ToFQDNS:         []FQDN{"private.com"},
 				BlockPrivateIPs: boolPtr(true), // overrides global
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"private.com": {MustCIDR("192.168.0.1/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"private.com": {
+					Addresses: []string{MustCIDR("192.168.0.1/32").String()},
+				},
 			},
 			blockPrivate: false,
 			expectNil:    true,
@@ -494,8 +516,10 @@ func Test_EgressRule_toNetworkPolicyEgressRule(t *testing.T) {
 					{Port: intStrPtr(443)},
 				},
 			},
-			ipMap: map[FQDN][]*CIDR{
-				"test.com": {MustCIDR("1.2.3.4/32")},
+			ipMap: map[FQDN]*FQDNStatus{
+				"test.com": {
+					Addresses: []string{MustCIDR("1.2.3.4/32").String()},
+				},
 			},
 			blockPrivate: false,
 			expectCIDRs:  []string{"1.2.3.4/32"},
@@ -594,7 +618,7 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 	tests := []struct {
 		name        string
 		np          NetworkPolicy
-		ips         map[FQDN][]*CIDR
+		statuses    []FQDNStatus
 		expectNil   bool
 		wantIngress []string
 		wantEgress  []string
@@ -607,7 +631,7 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 					PodSelector: metav1.LabelSelector{},
 				},
 			},
-			ips:       map[FQDN][]*CIDR{},
+			statuses:  []FQDNStatus{},
 			expectNil: true,
 		},
 		{
@@ -615,15 +639,13 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 			np: NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "ingress-only", Namespace: "default"},
 				Spec: NetworkPolicySpec{
-					PodSelector: metav1.LabelSelector{},
-					Ingress: []IngressRule{
-						{FromFQDNS: []FQDN{"a.com"}},
-					},
+					PodSelector:     metav1.LabelSelector{},
+					Ingress:         []IngressRule{{FromFQDNS: []FQDN{"a.com"}}},
 					BlockPrivateIPs: true,
 				},
 			},
-			ips: map[FQDN][]*CIDR{
-				"a.com": {MustCIDR("8.8.8.8/32")},
+			statuses: []FQDNStatus{
+				{FQDN: "a.com", Addresses: []string{MustCIDR("8.8.8.8/32").String()}},
 			},
 			wantIngress: []string{"8.8.8.8/32"},
 		},
@@ -632,15 +654,13 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 			np: NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "egress-only", Namespace: "default"},
 				Spec: NetworkPolicySpec{
-					PodSelector: metav1.LabelSelector{},
-					Egress: []EgressRule{
-						{ToFQDNS: []FQDN{"b.com"}},
-					},
+					PodSelector:     metav1.LabelSelector{},
+					Egress:          []EgressRule{{ToFQDNS: []FQDN{"b.com"}}},
 					BlockPrivateIPs: true,
 				},
 			},
-			ips: map[FQDN][]*CIDR{
-				"b.com": {MustCIDR("1.1.1.1/32")},
+			statuses: []FQDNStatus{
+				{FQDN: "b.com", Addresses: []string{MustCIDR("1.1.1.1/32").String()}},
 			},
 			wantEgress: []string{"1.1.1.1/32"},
 		},
@@ -649,19 +669,15 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 			np: NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "both-valid", Namespace: "default"},
 				Spec: NetworkPolicySpec{
-					PodSelector: metav1.LabelSelector{},
-					Ingress: []IngressRule{
-						{FromFQDNS: []FQDN{"a.com"}},
-					},
-					Egress: []EgressRule{
-						{ToFQDNS: []FQDN{"b.com"}},
-					},
+					PodSelector:     metav1.LabelSelector{},
+					Ingress:         []IngressRule{{FromFQDNS: []FQDN{"a.com"}}},
+					Egress:          []EgressRule{{ToFQDNS: []FQDN{"b.com"}}},
 					BlockPrivateIPs: true,
 				},
 			},
-			ips: map[FQDN][]*CIDR{
-				"a.com": {MustCIDR("8.8.8.8/32")},
-				"b.com": {MustCIDR("1.1.1.1/32")},
+			statuses: []FQDNStatus{
+				{FQDN: "a.com", Addresses: []string{MustCIDR("8.8.8.8/32").String()}},
+				{FQDN: "b.com", Addresses: []string{MustCIDR("1.1.1.1/32").String()}},
 			},
 			wantIngress: []string{"8.8.8.8/32"},
 			wantEgress:  []string{"1.1.1.1/32"},
@@ -671,19 +687,15 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 			np: NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "both-private", Namespace: "default"},
 				Spec: NetworkPolicySpec{
-					PodSelector: metav1.LabelSelector{},
-					Ingress: []IngressRule{
-						{FromFQDNS: []FQDN{"a.com"}},
-					},
-					Egress: []EgressRule{
-						{ToFQDNS: []FQDN{"b.com"}},
-					},
+					PodSelector:     metav1.LabelSelector{},
+					Ingress:         []IngressRule{{FromFQDNS: []FQDN{"a.com"}}},
+					Egress:          []EgressRule{{ToFQDNS: []FQDN{"b.com"}}},
 					BlockPrivateIPs: true,
 				},
 			},
-			ips: map[FQDN][]*CIDR{
-				"a.com": {MustCIDR("192.168.0.1/32")},
-				"b.com": {MustCIDR("10.0.0.1/32")},
+			statuses: []FQDNStatus{
+				{FQDN: "a.com", Addresses: []string{MustCIDR("192.168.0.1/32").String()}},
+				{FQDN: "b.com", Addresses: []string{MustCIDR("10.0.0.1/32").String()}},
 			},
 			expectNil: true,
 		},
@@ -691,7 +703,7 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.np.ToNetworkPolicy(tt.ips)
+			result := tt.np.ToNetworkPolicy(tt.statuses)
 			if tt.expectNil {
 				assert.Nil(t, result)
 				return
@@ -728,87 +740,139 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 	}
 }
 
-func Test_ResolveResultMap_String(t *testing.T) {
-	t.Parallel()
+func Test_FQDNStatus_Update(t *testing.T) {
+	now := metav1.Now()
+	past := metav1.NewTime(now.Add(-2 * time.Hour))
 
 	tests := []struct {
-		name     string
-		input    ResolveResultMap
-		expected map[FQDN][]string
+		name                string
+		initial             FQDNStatus
+		cidrs               []*CIDR
+		reason              NetworkPolicyResolveConditionReason
+		message             string
+		retryTimeoutSeconds int
+		expectCleared       bool
+		expectAddresses     []string
+		expectReason        NetworkPolicyResolveConditionReason
 	}{
 		{
-			name: "single fqdn with single CIDR",
-			input: ResolveResultMap{
-				"example.com": {MustCIDR("1.1.1.1/32")},
+			name: "Success updates addresses and timestamps",
+			initial: FQDNStatus{
+				ResolveReason:      NetworkPolicyResolveTemporaryError,
+				LastSuccessfulTime: past,
+				LastTransitionTime: past,
 			},
-			expected: map[FQDN][]string{
-				"example.com": {"1.1.1.1/32"},
-			},
+			cidrs:               []*CIDR{MustCIDR("1.2.3.4/32")},
+			reason:              NetworkPolicyResolveSuccess,
+			message:             "ok",
+			retryTimeoutSeconds: 3600,
+			expectCleared:       false,
+			expectAddresses:     []string{"1.2.3.4/32"},
+			expectReason:        NetworkPolicyResolveSuccess,
 		},
 		{
-			name: "single fqdn with multiple CIDRs",
-			input: ResolveResultMap{
-				"example.org": {
-					MustCIDR("192.168.1.0/24"),
-					MustCIDR("10.0.0.1/32"),
-				},
+			name: "Transient error before timeout does not clear addresses",
+			initial: FQDNStatus{
+				Addresses:          []string{"5.6.7.8/32"},
+				LastSuccessfulTime: metav1.NewTime(time.Now()),
+				ResolveReason:      NetworkPolicyResolveSuccess,
 			},
-			expected: map[FQDN][]string{
-				"example.org": {"192.168.1.0/24", "10.0.0.1/32"},
-			},
+			cidrs:               nil,
+			reason:              NetworkPolicyResolveTemporaryError,
+			message:             "temporary error",
+			retryTimeoutSeconds: 3600,
+			expectCleared:       false,
+			expectAddresses:     []string{"5.6.7.8/32"},
+			expectReason:        NetworkPolicyResolveTemporaryError,
 		},
 		{
-			name: "multiple fqdn entries",
-			input: ResolveResultMap{
-				"a.com": {MustCIDR("8.8.8.8/32")},
-				"b.com": {MustCIDR("1.1.1.1/32")},
+			name: "Transient error after timeout clears addresses",
+			initial: FQDNStatus{
+				Addresses:          []string{"5.6.7.8/32"},
+				LastSuccessfulTime: metav1.NewTime(time.Now().Add(-2 * time.Hour)),
+				ResolveReason:      NetworkPolicyResolveSuccess,
 			},
-			expected: map[FQDN][]string{
-				"a.com": {"8.8.8.8/32"},
-				"b.com": {"1.1.1.1/32"},
-			},
+			cidrs:               nil,
+			reason:              NetworkPolicyResolveTemporaryError,
+			message:             "timeout hit",
+			retryTimeoutSeconds: 3600,
+			expectCleared:       true,
+			expectAddresses:     []string{},
+			expectReason:        NetworkPolicyResolveTemporaryError,
 		},
 		{
-			name:     "empty map",
-			input:    ResolveResultMap{},
-			expected: map[FQDN][]string{},
+			name: "Non-transient error clears addresses immediately",
+			initial: FQDNStatus{
+				Addresses:          []string{"5.6.7.8/32"},
+				LastSuccessfulTime: metav1.NewTime(time.Now()),
+				ResolveReason:      NetworkPolicyResolveSuccess,
+			},
+			cidrs:               nil,
+			reason:              NetworkPolicyResolveDomainNotFound,
+			message:             "NXDOMAIN",
+			retryTimeoutSeconds: 3600,
+			expectCleared:       true,
+			expectAddresses:     []string{},
+			expectReason:        NetworkPolicyResolveDomainNotFound,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.String()
-			assert.Equal(t, tt.expected, actual)
+			cleared := tt.initial.Update(tt.cidrs, tt.reason, tt.message, tt.retryTimeoutSeconds)
+			assert.Equal(t, tt.expectCleared, cleared)
+			assert.Equal(t, tt.expectAddresses, tt.initial.Addresses)
+			assert.Equal(t, tt.expectReason, tt.initial.ResolveReason)
+			assert.Equal(t, tt.message, tt.initial.ResolveMessage)
 		})
 	}
 }
 
-func Test_NetworkPolicyStatus_SetStatus(t *testing.T) {
-	t.Parallel()
+func Test_NewFQDNStatus(t *testing.T) {
+	fqdn := FQDN("example.com")
+	cidrs := []*CIDR{
+		MustCIDR("1.2.3.4/32"),
+		MustCIDR("5.6.7.8/32"),
+	}
+	reason := NetworkPolicyResolveSuccess
+	message := "resolved successfully"
 
-	allCidrs := []*CIDR{
-		MustCIDR("10.0.0.1/32"),
-		MustCIDR("192.168.1.1/32"),
+	status := NewFQDNStatus(fqdn, cidrs, reason, message)
+
+	assert.Equal(t, fqdn, status.FQDN)
+	assert.Equal(t, reason, status.ResolveReason)
+	assert.Equal(t, message, status.ResolveMessage)
+	assert.Equal(t, []string{"1.2.3.4/32", "5.6.7.8/32"}, status.Addresses)
+
+	// Verify timestamps are set and equal
+	assert.False(t, status.LastSuccessfulTime.IsZero(), "LastSuccessfulTime should be set")
+	assert.False(t, status.LastTransitionTime.IsZero(), "LastTransitionTime should be set")
+	assert.Equal(t, status.LastSuccessfulTime, status.LastTransitionTime, "Times should be equal on creation")
+}
+
+func Test_FQDNStatusList_LookupTable(t *testing.T) {
+	status1 := FQDNStatus{
+		FQDN:               "example.com",
+		LastSuccessfulTime: metav1.Now(),
+		ResolveReason:      NetworkPolicyResolveSuccess,
+		Addresses:          []string{"1.1.1.1/32"},
 	}
-	appliedCidrs := []*CIDR{
-		MustCIDR("10.0.0.1/32"),
-	}
-	resolveResults := map[FQDN][]*CIDR{
-		"test.com": allCidrs,
-	}
-	errors := map[FQDN]NetworkPolicyResolveConditionReason{
-		"fail.com": NetworkPolicyResolveTimeout,
+	status2 := FQDNStatus{
+		FQDN:               "google.com",
+		LastSuccessfulTime: metav1.Now(),
+		ResolveReason:      NetworkPolicyResolveTemporaryError,
+		Addresses:          []string{"8.8.8.8/32"},
 	}
 
-	var status NetworkPolicyStatus
-	before := time.Now()
-	status.SetStatusFields(allCidrs, appliedCidrs, resolveResults, errors)
+	statusList := FQDNStatusList{status1, status2}
+	table := statusList.LookupTable()
 
-	assert.Equal(t, int32(1), status.AppliedAddressCount)
-	assert.Equal(t, int32(1), status.BlockedAddressCount)
-	assert.Equal(t, map[FQDN][]string{
-		"test.com": {"10.0.0.1/32", "192.168.1.1/32"},
-	}, status.ResolvedAddresses)
-	assert.Equal(t, errors, status.LatestErrors)
-	assert.WithinDuration(t, before, status.LatestLookupTime.Time, time.Second)
+	assert.Len(t, table, 2)
+
+	assert.Contains(t, table, FQDN("example.com"))
+	assert.Contains(t, table, FQDN("google.com"))
+
+	// Check that the pointers are correct
+	assert.Equal(t, &status1, table["example.com"])
+	assert.Equal(t, &status2, table["google.com"])
 }

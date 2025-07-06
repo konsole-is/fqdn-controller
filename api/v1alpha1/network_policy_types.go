@@ -100,7 +100,7 @@ type NetworkPolicySpec struct {
 	//  - Defaults to 300 seconds if not specified.
 	//  - Maximum value is 1800 seconds.
 	//  - Minimum value is 60 seconds.
-	//  - Must be larger than ResolveTimeoutSeconds.
+	//  - Must be greater than ResolveTimeoutSeconds.
 	//
 	// +kubebuilder:validation:Minimum=60
 	// +kubebuilder:validation:Maximum=1800
@@ -135,9 +135,9 @@ type NetworkPolicySpec struct {
 }
 
 // FQDNStatus defines the status of a given FQDN
-// TODO: implement logic for updating status
-// TODO: update tests and reconciler to conform with new approach
 type FQDNStatus struct {
+	// FQDN the FQDN this status refers to
+	FQDN FQDN `json:"fqdn"`
 	// LastSuccessfulTime is the last time the FQDN was resolved successfully. I.e. the last time the ResolveReason was
 	// NetworkPolicyResolveSuccess
 	LastSuccessfulTime metav1.Time `json:"LastSuccessfulTime,omitempty"`
@@ -145,6 +145,8 @@ type FQDNStatus struct {
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 	// ResolveReason describes the last resolve status
 	ResolveReason NetworkPolicyResolveConditionReason `json:"resolveReason,omitempty"`
+	// ResolveMessage a message describing the reason for the status
+	ResolveMessage string `json:"resolveMessage,omitempty"`
 	// Addresses is the list of resolved addresses for the given FQDN.
 	// The list is cleared if LastSuccessfulTime exceeds the time limit specified by
 	// NetworkPolicySpec.RetryTimeoutSeconds
@@ -157,13 +159,10 @@ type NetworkPolicyStatus struct {
 	LatestLookupTime metav1.Time `json:"latestLookupTime,omitempty"`
 
 	// FQDNs lists the status of each FQDN in the network policy
-	FQDNs map[FQDN]FQDNStatus `json:"fqdns,omitempty"`
+	FQDNs []FQDNStatus `json:"fqdns,omitempty"`
 
-	// AppliedAddressCount Counts the number of valid IPs applied in the generated network policy
+	// AppliedAddressCount Counts the number of unique IPs applied in the generated network policy
 	AppliedAddressCount int32 `json:"appliedAddressCount,omitempty"`
-
-	// BlockedAddressCount Counts the number of IPs excluded from the network policy due to being private
-	BlockedAddressCount int32 `json:"blockedAddressCount,omitempty"`
 
 	// TotalAddressCount The number of total IPs resolved from the FQDNs before filtering
 	TotalAddressCount int32 `json:"totalAddressesCount,omitempty"`
@@ -215,6 +214,17 @@ func (r NetworkPolicyResolveConditionReason) Priority() int {
 		return 1
 	default:
 		return 0
+	}
+}
+
+func (r NetworkPolicyResolveConditionReason) Transient() bool {
+	switch r {
+	case NetworkPolicyResolveInvalidDomain:
+		return false
+	case NetworkPolicyResolveDomainNotFound:
+		return false
+	default:
+		return true
 	}
 }
 

@@ -1,13 +1,11 @@
 package v1alpha1
 
 import (
-	"context"
 	"fmt"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net"
 	"regexp"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
 	"time"
 )
@@ -74,10 +72,14 @@ func (f *FQDN) Valid() bool {
 	return true
 }
 
-func isAllowed(cidr *CIDR, globalBlock bool, ruleBlock *bool) bool {
+func isAllowed(cidrString string, globalBlock bool, ruleBlock *bool) bool {
 	blockPrivateIP := globalBlock
 	if ruleBlock != nil {
 		blockPrivateIP = *ruleBlock
+	}
+	cidr, err := NewCIDR(cidrString)
+	if err != nil {
+		return false
 	}
 	if cidr.IsPrivate() && blockPrivateIP {
 		return false
@@ -85,19 +87,16 @@ func isAllowed(cidr *CIDR, globalBlock bool, ruleBlock *bool) bool {
 	return true
 }
 
-func getPeers(fqdns []FQDN, ips map[FQDN][]*CIDR, globalBlock bool, ruleBlock *bool) []netv1.NetworkPolicyPeer {
+func getPeers(fqdns []FQDN, ips map[FQDN]*FQDNStatus, globalBlock bool, ruleBlock *bool) []netv1.NetworkPolicyPeer {
 	var peers []netv1.NetworkPolicyPeer
 
 	for _, fqdn := range fqdns {
-		if cidrs, ok := ips[fqdn]; ok {
-			for _, cidr := range cidrs {
-				if isAllowed(cidr, globalBlock, ruleBlock) {
+		if status, ok := ips[fqdn]; ok {
+			for _, addr := range status.Addresses {
+				if isAllowed(addr, globalBlock, ruleBlock) {
 					peers = append(peers, netv1.NetworkPolicyPeer{IPBlock: &netv1.IPBlock{
-						CIDR: cidr.String(),
+						CIDR: addr,
 					}})
-				} else {
-					logger := logf.FromContext(context.Background())
-					logger.Info("NOT ALLOWED", "fqdn", fqdn, "cidr", cidr, "globalBlock", globalBlock, "ruleBlock", ruleBlock)
 				}
 			}
 		}
@@ -107,7 +106,7 @@ func getPeers(fqdns []FQDN, ips map[FQDN][]*CIDR, globalBlock bool, ruleBlock *b
 
 // toNetworkPolicyIngressRule converts the IngressRule to a netv1.NetworkPolicyIngressRule.
 // Returns nil if no peers were found.
-func (r *IngressRule) toNetworkPolicyIngressRule(ips map[FQDN][]*CIDR, blockPrivate bool) *netv1.NetworkPolicyIngressRule {
+func (r *IngressRule) toNetworkPolicyIngressRule(ips map[FQDN]*FQDNStatus, blockPrivate bool) *netv1.NetworkPolicyIngressRule {
 	peers := getPeers(r.FromFQDNS, ips, blockPrivate, r.BlockPrivateIPs)
 	if len(peers) == 0 {
 		return nil
@@ -121,7 +120,7 @@ func (r *IngressRule) toNetworkPolicyIngressRule(ips map[FQDN][]*CIDR, blockPriv
 
 // toNetworkPolicyEgressRule converts the EgressRule to a netv1.NetworkPolicyEgressRule.
 // Returns nil if no peers were found.
-func (r *EgressRule) toNetworkPolicyEgressRule(ips map[FQDN][]*CIDR, blockPrivate bool) *netv1.NetworkPolicyEgressRule {
+func (r *EgressRule) toNetworkPolicyEgressRule(ips map[FQDN]*FQDNStatus, blockPrivate bool) *netv1.NetworkPolicyEgressRule {
 	peers := getPeers(r.ToFQDNS, ips, blockPrivate, r.BlockPrivateIPs)
 	if len(peers) == 0 {
 		return nil
@@ -158,16 +157,17 @@ func (np *NetworkPolicy) FQDNs() []FQDN {
 // Returns nil if neither ingress rules nor egress rules were available.
 // This is to conform with how netv1.NetworkPolicy works: When no ingress nor egress rules are specified, the
 // PolicyTypes defaults to ["Ingress"] which in turn blocks all ingress traffic which is not what we want to do.
-func (np *NetworkPolicy) ToNetworkPolicy(ips map[FQDN][]*CIDR) *netv1.NetworkPolicy {
+func (np *NetworkPolicy) ToNetworkPolicy(fqdnStatuses []FQDNStatus) *netv1.NetworkPolicy {
+	lookup := FQDNStatusList(fqdnStatuses).LookupTable()
 	var ingress []netv1.NetworkPolicyIngressRule
 	for _, fqdnRule := range np.Spec.Ingress {
-		if rule := fqdnRule.toNetworkPolicyIngressRule(ips, np.Spec.BlockPrivateIPs); rule != nil {
+		if rule := fqdnRule.toNetworkPolicyIngressRule(lookup, np.Spec.BlockPrivateIPs); rule != nil {
 			ingress = append(ingress, *rule)
 		}
 	}
 	var egress []netv1.NetworkPolicyEgressRule
 	for _, fqdnRule := range np.Spec.Egress {
-		if rule := fqdnRule.toNetworkPolicyEgressRule(ips, np.Spec.BlockPrivateIPs); rule != nil {
+		if rule := fqdnRule.toNetworkPolicyEgressRule(lookup, np.Spec.BlockPrivateIPs); rule != nil {
 			egress = append(egress, *rule)
 		}
 	}
@@ -193,28 +193,58 @@ func (np *NetworkPolicy) ToNetworkPolicy(ips map[FQDN][]*CIDR) *netv1.NetworkPol
 	}
 }
 
-// ResolveResultMap Maps FQDN's to their resolved IP addresses
-type ResolveResultMap map[FQDN][]*CIDR
-
-// String converts the map cidrs to strings
-func (m ResolveResultMap) String() map[FQDN][]string {
-	result := make(map[FQDN][]string)
-	for k, v := range m {
-		result[k] = CIDRList(v).String()
+// Update updates the status of the FQDN.
+// If addresses were cleared due to an error during the update, the method returns true.
+func (f *FQDNStatus) Update(
+	cidrs []*CIDR, reason NetworkPolicyResolveConditionReason, message string, retryTimeoutSeconds int,
+) bool {
+	cleared := false
+	if reason == NetworkPolicyResolveSuccess {
+		f.LastSuccessfulTime = metav1.Now()
+		f.Addresses = CIDRList(cidrs).String()
 	}
-	return result
+	// On transient errors we want to adhere to the retry timeout specification
+	if reason != NetworkPolicyResolveSuccess && reason.Transient() {
+		retryLimitReached := time.Now().After(
+			f.LastSuccessfulTime.Add(time.Duration(retryTimeoutSeconds) * time.Second),
+		)
+
+		if retryLimitReached {
+			f.Addresses = []string{}
+			cleared = true
+		}
+	}
+	// On non-transient errors we clear the addresses immediately
+	if reason != NetworkPolicyResolveSuccess && !reason.Transient() {
+		f.Addresses = []string{}
+		cleared = true
+	}
+	if f.ResolveReason != reason {
+		f.LastTransitionTime = metav1.Now()
+	}
+	f.ResolveReason = reason
+	f.ResolveMessage = message
+	return cleared
 }
 
-// SetStatusFields Updates all status fields apart from ObservedGeneration and Conditions.
-func (s *NetworkPolicyStatus) SetStatusFields(
-	allCidrs []*CIDR, appliedCidrs []*CIDR,
-	resolveResults map[FQDN][]*CIDR,
-// errors map[FQDN]NetworkPolicyResolveConditionReason,
-) {
-	s.TotalAddressCount = int32(len(allCidrs))
-	s.AppliedAddressCount = int32(len(appliedCidrs))
-	s.BlockedAddressCount = int32(len(allCidrs) - len(appliedCidrs))
-	s.ResolvedAddresses = ResolveResultMap(resolveResults).String()
-	//s.LookupErrors = errors
-	s.LatestLookupTime = metav1.NewTime(time.Now())
+func NewFQDNStatus(fqdn FQDN, cidrs []*CIDR, reason NetworkPolicyResolveConditionReason, message string) FQDNStatus {
+	timeNow := metav1.Now()
+	return FQDNStatus{
+		FQDN:               fqdn,
+		LastSuccessfulTime: timeNow,
+		LastTransitionTime: timeNow,
+		ResolveReason:      reason,
+		ResolveMessage:     message,
+		Addresses:          CIDRList(cidrs).String(),
+	}
+}
+
+type FQDNStatusList []FQDNStatus
+
+func (s FQDNStatusList) LookupTable() map[FQDN]*FQDNStatus {
+	lookupTable := make(map[FQDN]*FQDNStatus)
+	for _, status := range s {
+		lookupTable[status.FQDN] = &status
+	}
+	return lookupTable
 }
