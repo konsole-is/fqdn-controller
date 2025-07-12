@@ -2,14 +2,15 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	"github.com/konsole-is/fqdn-controller/pkg/network"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
-	"strings"
-	"testing"
-	"time"
 )
 
 func Test_updateFQDNStatuses(t *testing.T) {

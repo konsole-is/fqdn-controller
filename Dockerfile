@@ -15,6 +15,7 @@ RUN go mod download
 COPY cmd/main.go cmd/main.go
 COPY api/ api/
 COPY internal/ internal/
+COPY pkg/ pkg/
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command
@@ -31,3 +32,18 @@ COPY --from=builder /workspace/manager .
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
+#FROM debian:bookworm-20250630-slim
+#
+## Install libc and any other runtime dependencies
+#RUN apt-get update && apt-get install -y --no-install-recommends \
+#    ca-certificates \
+#    libc6 \
+#    && rm -rf /var/lib/apt/lists/*
+#
+#WORKDIR /
+#COPY --from=builder /workspace/manager .
+#
+#RUN useradd -r -u 1001 manageruser
+#USER 1001
+#
+#ENTRYPOINT ["/manager"]

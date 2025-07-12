@@ -18,12 +18,13 @@ package controller
 
 import (
 	"context"
+	"time"
+
 	"github.com/konsole-is/fqdn-controller/pkg/network"
 	"github.com/konsole-is/fqdn-controller/pkg/utils"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
-	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,9 +55,10 @@ type NetworkPolicyReconciler struct {
 	MaxConcurrentResolves int
 }
 
-// +kubebuilder:rbac:groups=fqdn.konsole.is,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=fqdn.konsole.is,resources=networkpolicies/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=fqdn.konsole.is,resources=networkpolicies/finalizers,verbs=update
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=fqdn.konsole.is,resources=fqdnnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=fqdn.konsole.is,resources=fqdnnetworkpolicies/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=fqdn.konsole.is,resources=fqdnnetworkpolicies/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -101,17 +103,26 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	)
 	logf.IntoContext(ctx, logger)
 
-	// The network policy is nil when there are no valid Ingress or Egress rules resolved
-	// We delete the underlying network policy because it is no longer valid and requeue after TTL
+	// The network policy does not define any Ingress nor Egress rules, delete network policy if it exists
 	if networkPolicy == nil {
-		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyEmptyRules, "Resolved to an empty NetworkPolicy")
+		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyFailed, "No Ingress nor Egress rules specified")
 		if err := r.Client.Status().Update(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err := r.reconcileNetworkPolicyDeletion(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
-		logger.Info("Network policy was empty", "requeueAfter", np.Spec.TTLSeconds)
+		logger.Info("No Ingress nor Egress rules, will not requeue until updated")
+		return ctrl.Result{}, nil
+	}
+
+	// The network policy is empty when there are no Ingress or Egress rule addresses resolved, but they were defined
+	if utils.IsEmpty(networkPolicy) {
+		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyEmptyRules, "Resolved to an empty NetworkPolicy")
+		if err := r.Client.Status().Update(ctx, np); err != nil {
+			return ctrl.Result{}, err
+		}
+		logger.Info("Network policy is empty", "requeueAfter", np.Spec.TTLSeconds)
 		return ctrl.Result{RequeueAfter: time.Duration(np.Spec.TTLSeconds) * time.Second}, nil
 	}
 

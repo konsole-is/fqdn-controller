@@ -1,10 +1,11 @@
 package utils
 
 import (
+	"testing"
+
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"testing"
 )
 
 var object = &v1alpha1.NetworkPolicy{}

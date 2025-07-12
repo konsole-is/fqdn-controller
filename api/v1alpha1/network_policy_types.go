@@ -56,8 +56,24 @@ func (n NetworkType) ResolverString() string {
 // +kubebuilder:validation:Pattern=`^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
 type FQDN string
 
-// IngressRule defines rules for inbound network traffic from the specified FQDNs on the specified ports
-// Each FQDNs IP's will be looked up periodically to update the underlying NetworkPolicy
+// IngressRule defines rules for inbound network traffic from the specified FQDNs on the specified ports.
+// Each FQDN is resolved periodically to IPs, and those IPs are used to update the underlying NetworkPolicy.
+//
+// # USAGE NOTICE
+//
+// Kubernetes does not typically preserve the original source IP of incoming external traffic.
+// Traffic entering through cloud LoadBalancers (e.g. AWS ALB/NLB) most often has the source IP replaced by that of the
+// LoadBalancer or node. While preserving the original IP is possible (e.g. using NLB with proxy protocol),
+// such configurations are advanced and non-default and come with their own limitations.
+//
+// Because of this, using FQDN-based ingress rules is only effective when the source traffic comes from
+// trusted environments where source IPs are preserved end-to-end, for example:
+//   - Direct VPC peers with custom routing
+//   - VPN tunnels terminating directly in the cluster's network
+//   - NodePort services accessed directly
+//
+// In most cases, standard ingress rules using pod or namespace selectors should be preferred.
+// Only use FQDN-based ingress when you are certain the source IP will be preserved and DNS-based matching is required.
 type IngressRule struct {
 	// Ports describes the ports to allow traffic on
 	Ports []netv1.NetworkPolicyPort `json:"ports"`
@@ -68,8 +84,8 @@ type IngressRule struct {
 	BlockPrivateIPs *bool `json:"blockPrivateIPs,omitempty"`
 }
 
-// EgressRule defines rules for outbound network traffic to the specified FQDNs on the specified ports
-// Each FQDNs IP's will be looked up periodically to update the underlying NetworkPolicy
+// EgressRule defines rules for outbound network traffic to the specified FQDNs on the specified ports.
+// Each FQDNs IP's will be looked up periodically to update the underlying NetworkPolicy.
 type EgressRule struct {
 	// Ports describes the ports to allow traffic on
 	Ports []netv1.NetworkPolicyPort `json:"ports"`
@@ -97,14 +113,14 @@ type NetworkPolicySpec struct {
 	EnabledNetworkType NetworkType `json:"enabledNetworkType,omitempty"`
 	// TTLSeconds The interval at which the IP addresses of the FQDNs are re-evaluated.
 	//
-	//  - Defaults to 300 seconds if not specified.
+	//  - Defaults to 60 seconds if not specified.
 	//  - Maximum value is 1800 seconds.
-	//  - Minimum value is 60 seconds.
+	//  - Minimum value is 5 seconds.
 	//  - Must be greater than ResolveTimeoutSeconds.
 	//
-	// +kubebuilder:validation:Minimum=60
+	// +kubebuilder:validation:Minimum=5
 	// +kubebuilder:validation:Maximum=1800
-	// +kubebuilder:default:=300
+	// +kubebuilder:default:=60
 	TTLSeconds int32 `json:"ttlSeconds,omitempty"`
 	// ResolveTimeoutSeconds The timeout to use for lookups of the FQDNs
 	//
@@ -232,6 +248,14 @@ func (r NetworkPolicyResolveConditionReason) Transient() bool {
 // +kubebuilder:subresource:status
 
 // NetworkPolicy is the Schema for the networkpolicies API.
+//
+//   - Please ensure the pods you apply this network policy to have a separate policy allowing
+//     access to CoreDNS / KubeDNS pods in your cluster. Without this, once this Network policy is applied, access to
+//     DNS will be blocked due to how network policies deny all unspecified traffic by default once applied.
+//   - If no addresses are resolved from the FQDNs from either Ingress or Egress rules that were specified, the default
+//     behavior is to block all traffic of that type. This conforms with the default behavior of network policies
+//     (networking.k8s.io/v1)
+//
 // +kubebuilder:resource:path=fqdnnetworkpolicies,shortName=fqdn,singular=fqdnnetworkpolicy,scope=Namespaced
 type NetworkPolicy struct {
 	metav1.TypeMeta   `json:",inline"`

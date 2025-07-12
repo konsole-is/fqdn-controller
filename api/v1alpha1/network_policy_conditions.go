@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	"fmt"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -12,7 +11,7 @@ func (np *NetworkPolicy) SetResolveCondition(reason NetworkPolicyResolveConditio
 	condition := metav1.ConditionFalse
 	if reason == NetworkPolicyResolveSuccess {
 		condition = metav1.ConditionTrue
-		message = fmt.Sprintf("The network policy resolved successfully.")
+		message = "The network policy resolved successfully."
 	}
 	meta.SetStatusCondition(&np.Status.Conditions, metav1.Condition{
 		Type:               string(NetworkPolicyResolveCondition),

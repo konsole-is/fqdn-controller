@@ -7,7 +7,7 @@ rules:
 - apiGroups:
   - fqdn.konsole.is
   resources:
-  - networkpolicies
+  - fqdnnetworkpolicies
   verbs:
   - create
   - delete
@@ -19,14 +19,26 @@ rules:
 - apiGroups:
   - fqdn.konsole.is
   resources:
-  - networkpolicies/finalizers
+  - fqdnnetworkpolicies/finalizers
   verbs:
   - update
 - apiGroups:
   - fqdn.konsole.is
   resources:
-  - networkpolicies/status
+  - fqdnnetworkpolicies/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

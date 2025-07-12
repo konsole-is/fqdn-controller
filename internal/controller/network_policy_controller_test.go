@@ -18,6 +18,9 @@ package controller
 
 import (
 	"context"
+	"net"
+	"time"
+
 	"github.com/konsole-is/fqdn-controller/pkg/network"
 	testutils "github.com/konsole-is/fqdn-controller/test/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -29,9 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
-	"net"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -76,7 +77,7 @@ var _ = Describe("NetworkPolicy Controller", func() {
 				},
 			},
 		}
-		BeforeEach(func() {})
+
 		AfterEach(func() {
 			resource := &v1alpha1.NetworkPolicy{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)

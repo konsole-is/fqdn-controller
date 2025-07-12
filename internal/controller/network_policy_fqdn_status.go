@@ -2,12 +2,13 @@ package controller
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	"github.com/konsole-is/fqdn-controller/pkg/network"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"time"
 )
 
 // updateFQDNStatuses updates the status of each FQDN in the network policy according to the results and the previous

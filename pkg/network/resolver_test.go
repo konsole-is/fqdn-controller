@@ -3,12 +3,13 @@ package network
 import (
 	"context"
 	"errors"
-	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDNSResolverResult_resolveReason(t *testing.T) {
@@ -308,4 +309,12 @@ func TestDNSResolver_Resolve(t *testing.T) {
 		require.Error(t, result[0].Error)
 		assert.True(t, errors.Is(result[0].Error, context.DeadlineExceeded))
 	})
+}
+
+func TestDNSResolver_ResolveGoogle(t *testing.T) {
+	resolver := NewDNSResolver()
+	result := resolver.Resolve(
+		context.Background(), time.Second*3, 1, v1alpha1.Ipv4, []v1alpha1.FQDN{"google.com"},
+	)
+	t.Log(result.CIDRs())
 }

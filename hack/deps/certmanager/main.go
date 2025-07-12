@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/konsole-is/fqdn-controller/test/utils"
 	"log"
+
+	"github.com/konsole-is/fqdn-controller/test/utils"
 )
 
 func main() {

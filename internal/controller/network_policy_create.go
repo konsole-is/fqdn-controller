@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	"github.com/konsole-is/fqdn-controller/pkg/utils"
 	corev1 "k8s.io/api/core/v1"

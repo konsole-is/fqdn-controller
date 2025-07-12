@@ -3,11 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"time"
 )
 
 const startupAnnotationKey = "fqdn-controller.konsole.is/startup-trigger"

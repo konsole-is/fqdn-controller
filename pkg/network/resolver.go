@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 )
 
 type lookupError struct {

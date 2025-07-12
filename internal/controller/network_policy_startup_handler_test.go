@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sync"
-	"time"
 )
 
 type fakeManager struct {

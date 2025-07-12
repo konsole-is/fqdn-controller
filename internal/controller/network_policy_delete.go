@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	"github.com/konsole-is/fqdn-controller/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
@@ -18,7 +19,7 @@ func (r *NetworkPolicyReconciler) reconcileNetworkPolicyDeletion(ctx context.Con
 			Namespace: np.Namespace,
 		},
 	}
-	if err := r.Client.Delete(ctx, networkPolicy); err != nil && !errors.IsNotFound(err) {
+	if err := r.Delete(ctx, networkPolicy); err != nil && !errors.IsNotFound(err) {
 		return err
 	}
 	r.EventRecorder.Event(

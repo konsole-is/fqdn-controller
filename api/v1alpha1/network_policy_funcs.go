@@ -2,12 +2,13 @@ package v1alpha1
 
 import (
 	"fmt"
-	netv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net"
 	"regexp"
 	"strings"
 	"time"
+
+	netv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // CIDR represents a network range in CIDR (Classless Inter-Domain Routing) notation.
@@ -154,10 +155,18 @@ func (np *NetworkPolicy) FQDNs() []FQDN {
 }
 
 // ToNetworkPolicy converts the NetworkPolicy to a netv1.NetworkPolicy.
-// Returns nil if neither ingress rules nor egress rules were available.
-// This is to conform with how netv1.NetworkPolicy works: When no ingress nor egress rules are specified, the
-// PolicyTypes defaults to ["Ingress"] which in turn blocks all ingress traffic which is not what we want to do.
+// If no Ingress or Egress rules are specified, nil is returned.
 func (np *NetworkPolicy) ToNetworkPolicy(fqdnStatuses []FQDNStatus) *netv1.NetworkPolicy {
+	var policies []netv1.PolicyType
+	if len(np.Spec.Ingress) > 0 {
+		policies = append(policies, netv1.PolicyTypeIngress)
+	}
+	if len(np.Spec.Egress) > 0 {
+		policies = append(policies, netv1.PolicyTypeEgress)
+	}
+	if len(policies) == 0 {
+		return nil
+	}
 	lookup := FQDNStatusList(fqdnStatuses).LookupTable()
 	var ingress []netv1.NetworkPolicyIngressRule
 	for _, fqdnRule := range np.Spec.Ingress {
@@ -170,16 +179,6 @@ func (np *NetworkPolicy) ToNetworkPolicy(fqdnStatuses []FQDNStatus) *netv1.Netwo
 		if rule := fqdnRule.toNetworkPolicyEgressRule(lookup, np.Spec.BlockPrivateIPs); rule != nil {
 			egress = append(egress, *rule)
 		}
-	}
-	if len(ingress) == 0 && len(egress) == 0 {
-		return nil
-	}
-	var policies []netv1.PolicyType
-	if len(ingress) > 0 {
-		policies = append(policies, netv1.PolicyTypeIngress)
-	}
-	if len(egress) > 0 {
-		policies = append(policies, netv1.PolicyTypeEgress)
 	}
 
 	return &netv1.NetworkPolicy{

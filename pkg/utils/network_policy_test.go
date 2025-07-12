@@ -1,9 +1,10 @@
 package utils
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	netv1 "k8s.io/api/networking/v1"
-	"testing"
 )
 
 func Test_UniqueCidrsInNetworkPolicy(t *testing.T) {

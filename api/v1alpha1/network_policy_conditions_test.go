@@ -1,10 +1,11 @@
 package v1alpha1
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"testing"
 )
 
 func Test_SetReadyConditionTrue(t *testing.T) {

@@ -34,3 +34,7 @@ func UniqueCidrsInNetworkPolicy(networkPolicy *netv1.NetworkPolicy) []*v1alpha1.
 	}
 	return cidrs
 }
+
+func IsEmpty(networkPolicy *netv1.NetworkPolicy) bool {
+	return len(networkPolicy.Spec.Ingress) == 0 && len(networkPolicy.Spec.Egress) == 0
+}
