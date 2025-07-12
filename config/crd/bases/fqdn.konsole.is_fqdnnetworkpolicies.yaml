@@ -25,8 +25,8 @@ spec:
             - Please ensure the pods you apply this network policy to have a separate policy allowing
               access to CoreDNS / KubeDNS pods in your cluster. Without this, once this Network policy is applied, access to
               DNS will be blocked due to how network policies deny all unspecified traffic by default once applied.
-            - If no addresses are resolved from the FQDNs from either Ingress or Egress rules that were specified, the default
-              behavior is to block all traffic of that type. This conforms with the default behavior of network policies
+            - If no addresses are resolved from the FQDNs from the Egress rules that were specified, the default
+              behavior is to block all Egress traffic. This conforms with the default behavior of network policies
               (networking.k8s.io/v1)
         properties:
           apiVersion:
@@ -52,7 +52,7 @@ spec:
               blockPrivateIPs:
                 description: |-
                   BlockPrivateIPs When set to true, all private IPs are emitted from the rules unless otherwise specified at the
-                  IngressRule or EgressRule level.
+                  EgressRule level.
 
                   - Defaults to false if not specified
                 type: boolean
@@ -129,83 +129,6 @@ spec:
                 - ipv4
                 - ipv6
                 type: string
-              ingress:
-                description: Ingress defines the incoming network traffic rules for
-                  the selected pods
-                items:
-                  description: |-
-                    IngressRule defines rules for inbound network traffic from the specified FQDNs on the specified ports.
-                    Each FQDN is resolved periodically to IPs, and those IPs are used to update the underlying NetworkPolicy.
-
-                    # USAGE NOTICE
-
-                    Kubernetes does not typically preserve the original source IP of incoming external traffic.
-                    Traffic entering through cloud LoadBalancers (e.g. AWS ALB/NLB) most often has the source IP replaced by that of the
-                    LoadBalancer or node. While preserving the original IP is possible (e.g. using NLB with proxy protocol),
-                    such configurations are advanced and non-default and come with their own limitations.
-
-                    Because of this, using FQDN-based ingress rules is only effective when the source traffic comes from
-                    trusted environments where source IPs are preserved end-to-end, for example:
-                      - Direct VPC peers with custom routing
-                      - VPN tunnels terminating directly in the cluster's network
-                      - NodePort services accessed directly
-
-                    In most cases, standard ingress rules using pod or namespace selectors should be preferred.
-                    Only use FQDN-based ingress when you are certain the source IP will be preserved and DNS-based matching is required.
-                  properties:
-                    blockPrivateIPs:
-                      description: BlockPrivateIPs when set, overwrites the default
-                        behavior of the same field in NetworkPolicySpec
-                      type: boolean
-                    fromFQDNS:
-                      description: FromFQDNS are the FQDNs from which traffic is allowed
-                        (incoming)
-                      items:
-                        description: |-
-                          FQDN is short for Fully Qualified Domain Name and represents a complete domain name that uniquely identifies a host
-                          on the internet. It must consist of one or more labels separated by dots (e.g., "api.example.com"), where each label
-                          can contain letters, digits, and hyphens, but cannot start or end with a hyphen. The FQDN must end with a top-level
-                          domain (e.g., ".com", ".org") of at least two characters.
-                        pattern: ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$
-                        type: string
-                      maxItems: 20
-                      type: array
-                    ports:
-                      description: Ports describes the ports to allow traffic on
-                      items:
-                        description: NetworkPolicyPort describes a port to allow traffic
-                          on
-                        properties:
-                          endPort:
-                            description: |-
-                              endPort indicates that the range of ports from port to endPort if set, inclusive,
-                              should be allowed by the policy. This field cannot be defined if the port field
-                              is not defined or if the port field is defined as a named (string) port.
-                              The endPort must be equal or greater than port.
-                            format: int32
-                            type: integer
-                          port:
-                            anyOf:
-                            - type: integer
-                            - type: string
-                            description: |-
-                              port represents the port on the given protocol. This can either be a numerical or named
-                              port on a pod. If this field is not provided, this matches all port names and
-                              numbers.
-                              If present, only traffic on the specified protocol AND port will be matched.
-                            x-kubernetes-int-or-string: true
-                          protocol:
-                            description: |-
-                              protocol represents the protocol (TCP, UDP, or SCTP) which traffic must match.
-                              If not specified, this field defaults to TCP.
-                            type: string
-                        type: object
-                      type: array
-                  required:
-                  - fromFQDNS
-                  - ports
-                  type: object
-                type: array
               podSelector:
                 description: PodSelector defines which pods this network policy shall
                   apply to

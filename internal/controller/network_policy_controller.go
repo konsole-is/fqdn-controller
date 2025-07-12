@@ -103,20 +103,31 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	)
 	logf.IntoContext(ctx, logger)
 
-	// The network policy does not define any Ingress nor Egress rules, delete network policy if it exists
+	// The network policy does not define any Egress rules, delete network policy if it exists
 	if networkPolicy == nil {
-		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyFailed, "No Ingress nor Egress rules specified")
+		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyFailed, "No Egress rules specified")
 		if err := r.Client.Status().Update(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err := r.reconcileNetworkPolicyDeletion(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
-		logger.Info("No Ingress nor Egress rules, will not requeue until updated")
+		logger.Info("No Egress rules, will not requeue until updated")
 		return ctrl.Result{}, nil
 	}
 
-	// The network policy is empty when there are no Ingress or Egress rule addresses resolved, but they were defined
+	// There are Egress rules defined in our FQDN network policy, we create or update the underlying
+	// network policy, so we create it.
+	if err := r.reconcileNetworkPolicyCreation(ctx, np, networkPolicy); err != nil {
+		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyFailed, err.Error())
+		if err := r.Client.Status().Update(ctx, np); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, err
+	}
+
+	// If the underlying network policy is empty we set a different status
+	// This happens when the FQDN's do not resole to any valid addresses
 	if utils.IsEmpty(networkPolicy) {
 		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyEmptyRules, "Resolved to an empty NetworkPolicy")
 		if err := r.Client.Status().Update(ctx, np); err != nil {
@@ -124,15 +135,6 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		logger.Info("Network policy is empty", "requeueAfter", np.Spec.TTLSeconds)
 		return ctrl.Result{RequeueAfter: time.Duration(np.Spec.TTLSeconds) * time.Second}, nil
-	}
-
-	// There are valid Ingress or Egress rules in the network policy, we create or update it
-	if err := r.reconcileNetworkPolicyCreation(ctx, np, networkPolicy); err != nil {
-		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyFailed, err.Error())
-		if err := r.Client.Status().Update(ctx, np); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, err
 	}
 
 	// Creation succeeded, update the status and requeue after TTL

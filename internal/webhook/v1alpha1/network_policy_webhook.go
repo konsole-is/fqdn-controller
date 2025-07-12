@@ -85,13 +85,6 @@ type NetworkPolicyCustomValidator struct {
 var _ webhook.CustomValidator = &NetworkPolicyCustomValidator{}
 
 func validateFQDNs(n *v1alpha1.NetworkPolicy) error {
-	for i, rule := range n.Spec.Ingress {
-		for j, fqdn := range rule.FromFQDNS {
-			if !fqdn.Valid() {
-				return fmt.Errorf("invalid FQDN '%s' in Ingress[%d].FromFQDNS[%d]", fqdn, i, j)
-			}
-		}
-	}
 	for i, rule := range n.Spec.Egress {
 		for j, fqdn := range rule.ToFQDNS {
 			if !fqdn.Valid() {
@@ -110,8 +103,8 @@ func validateTimeLimits(n *v1alpha1.NetworkPolicy) error {
 }
 
 func validateRuleCount(np *v1alpha1.NetworkPolicy) error {
-	if len(np.Spec.Ingress) == 0 && len(np.Spec.Egress) == 0 {
-		return fmt.Errorf("at least one of Ingress or Egress rule must be specified")
+	if len(np.Spec.Egress) == 0 {
+		return fmt.Errorf("at least one Egress rule must be specified")
 	}
 	return nil
 }

@@ -105,20 +105,6 @@ func getPeers(fqdns []FQDN, ips map[FQDN]*FQDNStatus, globalBlock bool, ruleBloc
 	return peers
 }
 
-// toNetworkPolicyIngressRule converts the IngressRule to a netv1.NetworkPolicyIngressRule.
-// Returns nil if no peers were found.
-func (r *IngressRule) toNetworkPolicyIngressRule(ips map[FQDN]*FQDNStatus, blockPrivate bool) *netv1.NetworkPolicyIngressRule {
-	peers := getPeers(r.FromFQDNS, ips, blockPrivate, r.BlockPrivateIPs)
-	if len(peers) == 0 {
-		return nil
-	}
-
-	return &netv1.NetworkPolicyIngressRule{
-		Ports: r.Ports,
-		From:  peers,
-	}
-}
-
 // toNetworkPolicyEgressRule converts the EgressRule to a netv1.NetworkPolicyEgressRule.
 // Returns nil if no peers were found.
 func (r *EgressRule) toNetworkPolicyEgressRule(ips map[FQDN]*FQDNStatus, blockPrivate bool) *netv1.NetworkPolicyEgressRule {
@@ -136,11 +122,6 @@ func (r *EgressRule) toNetworkPolicyEgressRule(ips map[FQDN]*FQDNStatus, blockPr
 // FQDNs Returns all unique FQDNs defined in the network policy
 func (np *NetworkPolicy) FQDNs() []FQDN {
 	var set = make(map[FQDN]struct{})
-	for _, rule := range np.Spec.Ingress {
-		for _, fqdn := range rule.FromFQDNS {
-			set[fqdn] = struct{}{}
-		}
-	}
 	for _, rule := range np.Spec.Egress {
 		for _, fqdn := range rule.ToFQDNS {
 			set[fqdn] = struct{}{}
@@ -155,12 +136,9 @@ func (np *NetworkPolicy) FQDNs() []FQDN {
 }
 
 // ToNetworkPolicy converts the NetworkPolicy to a netv1.NetworkPolicy.
-// If no Ingress or Egress rules are specified, nil is returned.
+// If no Egress rules are specified, nil is returned.
 func (np *NetworkPolicy) ToNetworkPolicy(fqdnStatuses []FQDNStatus) *netv1.NetworkPolicy {
 	var policies []netv1.PolicyType
-	if len(np.Spec.Ingress) > 0 {
-		policies = append(policies, netv1.PolicyTypeIngress)
-	}
 	if len(np.Spec.Egress) > 0 {
 		policies = append(policies, netv1.PolicyTypeEgress)
 	}
@@ -168,12 +146,6 @@ func (np *NetworkPolicy) ToNetworkPolicy(fqdnStatuses []FQDNStatus) *netv1.Netwo
 		return nil
 	}
 	lookup := FQDNStatusList(fqdnStatuses).LookupTable()
-	var ingress []netv1.NetworkPolicyIngressRule
-	for _, fqdnRule := range np.Spec.Ingress {
-		if rule := fqdnRule.toNetworkPolicyIngressRule(lookup, np.Spec.BlockPrivateIPs); rule != nil {
-			ingress = append(ingress, *rule)
-		}
-	}
 	var egress []netv1.NetworkPolicyEgressRule
 	for _, fqdnRule := range np.Spec.Egress {
 		if rule := fqdnRule.toNetworkPolicyEgressRule(lookup, np.Spec.BlockPrivateIPs); rule != nil {
@@ -185,7 +157,6 @@ func (np *NetworkPolicy) ToNetworkPolicy(fqdnStatuses []FQDNStatus) *netv1.Netwo
 		ObjectMeta: np.ObjectMeta,
 		Spec: netv1.NetworkPolicySpec{
 			PodSelector: np.Spec.PodSelector,
-			Ingress:     ingress,
 			Egress:      egress,
 			PolicyTypes: policies,
 		},

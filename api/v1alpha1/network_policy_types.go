@@ -56,34 +56,6 @@ func (n NetworkType) ResolverString() string {
 // +kubebuilder:validation:Pattern=`^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
 type FQDN string
 
-// IngressRule defines rules for inbound network traffic from the specified FQDNs on the specified ports.
-// Each FQDN is resolved periodically to IPs, and those IPs are used to update the underlying NetworkPolicy.
-//
-// # USAGE NOTICE
-//
-// Kubernetes does not typically preserve the original source IP of incoming external traffic.
-// Traffic entering through cloud LoadBalancers (e.g. AWS ALB/NLB) most often has the source IP replaced by that of the
-// LoadBalancer or node. While preserving the original IP is possible (e.g. using NLB with proxy protocol),
-// such configurations are advanced and non-default and come with their own limitations.
-//
-// Because of this, using FQDN-based ingress rules is only effective when the source traffic comes from
-// trusted environments where source IPs are preserved end-to-end, for example:
-//   - Direct VPC peers with custom routing
-//   - VPN tunnels terminating directly in the cluster's network
-//   - NodePort services accessed directly
-//
-// In most cases, standard ingress rules using pod or namespace selectors should be preferred.
-// Only use FQDN-based ingress when you are certain the source IP will be preserved and DNS-based matching is required.
-type IngressRule struct {
-	// Ports describes the ports to allow traffic on
-	Ports []netv1.NetworkPolicyPort `json:"ports"`
-	// FromFQDNS are the FQDNs from which traffic is allowed (incoming)
-	// +kubebuilder:validation:MaxItems=20
-	FromFQDNS []FQDN `json:"fromFQDNS"`
-	// BlockPrivateIPs when set, overwrites the default behavior of the same field in NetworkPolicySpec
-	BlockPrivateIPs *bool `json:"blockPrivateIPs,omitempty"`
-}
-
 // EgressRule defines rules for outbound network traffic to the specified FQDNs on the specified ports.
 // Each FQDNs IP's will be looked up periodically to update the underlying NetworkPolicy.
 type EgressRule struct {
@@ -100,8 +72,6 @@ type EgressRule struct {
 type NetworkPolicySpec struct {
 	// PodSelector defines which pods this network policy shall apply to
 	PodSelector metav1.LabelSelector `json:"podSelector"`
-	// Ingress defines the incoming network traffic rules for the selected pods
-	Ingress []IngressRule `json:"ingress,omitempty"`
 	// Egress defines the outbound network traffic rules for the selected pods
 	Egress []EgressRule `json:"egress,omitempty"`
 	// EnabledNetworkType defines which type of IP addresses to allow.
@@ -144,7 +114,7 @@ type NetworkPolicySpec struct {
 	// +kubebuilder:default:=3600
 	RetryTimeoutSeconds *int32 `json:"retryTimeoutSeconds,omitempty"`
 	// BlockPrivateIPs When set to true, all private IPs are emitted from the rules unless otherwise specified at the
-	// IngressRule or EgressRule level.
+	// EgressRule level.
 	//
 	// - Defaults to false if not specified
 	BlockPrivateIPs bool `json:"blockPrivateIPs,omitempty"`
@@ -252,8 +222,8 @@ func (r NetworkPolicyResolveConditionReason) Transient() bool {
 //   - Please ensure the pods you apply this network policy to have a separate policy allowing
 //     access to CoreDNS / KubeDNS pods in your cluster. Without this, once this Network policy is applied, access to
 //     DNS will be blocked due to how network policies deny all unspecified traffic by default once applied.
-//   - If no addresses are resolved from the FQDNs from either Ingress or Egress rules that were specified, the default
-//     behavior is to block all traffic of that type. This conforms with the default behavior of network policies
+//   - If no addresses are resolved from the FQDNs from the Egress rules that were specified, the default
+//     behavior is to block all Egress traffic. This conforms with the default behavior of network policies
 //     (networking.k8s.io/v1)
 //
 // +kubebuilder:resource:path=fqdnnetworkpolicies,shortName=fqdn,singular=fqdnnetworkpolicy,scope=Namespaced

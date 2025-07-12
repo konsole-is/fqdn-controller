@@ -43,7 +43,7 @@ var _ = Describe("NetworkPolicyReconciler", func() {
 							"role": "db",
 						},
 					},
-					PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress},
+					PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
 				},
 			}
 

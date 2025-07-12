@@ -351,7 +351,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyCAInjection).Should(Succeed())
 		})
 
-		+kubebuilder:scaffold:e2e-webhooks-checks
+		// +kubebuilder:scaffold:e2e-webhooks-checks
 
 		It("should enable egress access to google.com using a FQDN NetworkPolicy", func() {
 			httpDomain := "http://google.com"
@@ -373,7 +373,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(success).To(BeTrue(), "expected curl to %s to succeed", httpDomain)
 			}).WithTimeout(30 * time.Second).WithPolling(250 * time.Millisecond).Should(Succeed())
 
-			By("applying a default deny-all network policy (with kube-dns access)")
+			By("applying a default deny-all egress network policy (with kube-dns access)")
 			denyAllPolicyName := "deny-all"
 			denyAllPolicy := &netv1.NetworkPolicy{
 				TypeMeta: metav1.TypeMeta{
@@ -389,7 +389,6 @@ var _ = Describe("Manager", Ordered, func() {
 						MatchLabels: curlPodLabels,
 					},
 					PolicyTypes: []netv1.PolicyType{
-						netv1.PolicyTypeIngress,
 						netv1.PolicyTypeEgress,
 					},
 					Egress: []netv1.NetworkPolicyEgressRule{
@@ -444,7 +443,7 @@ var _ = Describe("Manager", Ordered, func() {
 				}
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(failure).To(BeTrue(), "expected curl to %s to fail", httpDomain)
-			}).Within(time.Minute).WithPolling(250 * time.Millisecond).Should(Succeed())
+			}).Within(60 * time.Second).WithPolling(time.Second).Should(Succeed())
 
 			By("applying a NetworkPolicy that allows egress to google.com on port 80")
 			policy := &v1alpha1.NetworkPolicy{
@@ -465,8 +464,8 @@ var _ = Describe("Manager", Ordered, func() {
 					},
 					BlockPrivateIPs:       false,
 					EnabledNetworkType:    v1alpha1.Ipv4,
-					TTLSeconds:            30,
-					ResolveTimeoutSeconds: 3,
+					TTLSeconds:            5, // Google is tough, constantly changing IPs
+					ResolveTimeoutSeconds: 2,
 				},
 			}
 			Expect(utils.KubectlApply(policy)).To(Succeed())
@@ -527,191 +526,6 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(failure).To(BeTrue(), "expected curl to %s fail after deleting the policy", httpDomain)
 			}).Within(60 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
-		})
-
-		It("should allow ingress access from a pod using a FQDN NetworkPolicy", func() {
-			const (
-				httpbinName       = "httpbin"
-				networkPolicyName = "allow-httpbin-ingress"
-			)
-			t := GinkgoT()
-			httpbinLabels := map[string]string{"app": httpbinName}
-			podRef := types.NamespacedName{Name: curlPodName, Namespace: namespace}
-			// We allow this FQDN in the ingress rule on the httpbin pod
-			curlPodFQDN := fmt.Sprintf("%s.%s.pod.cluster.local", curlPodName, namespace)
-			// We curl this from the curlpod
-			httpbinFQDN := fmt.Sprintf("%s.%s.svc.cluster.local", httpbinName, namespace)
-			targetURL := fmt.Sprintf("http://%s", httpbinFQDN)
-
-			By("deploying a httpbin pod and service")
-			httpbin := &corev1.Pod{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Pod",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      httpbinName,
-					Namespace: namespace,
-					Labels:    httpbinLabels,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{
-						Name:  "httpbin",
-						Image: "kennethreitz/httpbin",
-						Ports: []corev1.ContainerPort{{ContainerPort: 80}},
-						SecurityContext: &corev1.SecurityContext{
-							AllowPrivilegeEscalation: ptr.To(false),
-							RunAsNonRoot:             ptr.To(true),
-							RunAsUser:                ptr.To(int64(1001)),
-							Capabilities: &corev1.Capabilities{
-								Drop: []corev1.Capability{"ALL"},
-							},
-							SeccompProfile: &corev1.SeccompProfile{
-								Type: corev1.SeccompProfileTypeRuntimeDefault,
-							},
-						},
-					}},
-				},
-			}
-			httpbinSvc := &corev1.Service{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Service",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      httpbinName,
-					Namespace: namespace,
-				},
-				Spec: corev1.ServiceSpec{
-					Selector: httpbinLabels,
-					Ports: []corev1.ServicePort{{
-						Port:     80,
-						Protocol: corev1.ProtocolTCP,
-					}},
-				},
-			}
-			Expect(utils.KubectlApply(httpbin)).To(Succeed())
-			Expect(utils.KubectlApply(httpbinSvc)).To(Succeed())
-			DeferCleanup(func() {
-				_ = utils.KubectlDelete(httpbin)
-				_ = utils.KubectlDelete(httpbinSvc)
-			})
-
-			By("applying a default deny-all ingress network policy to the httpbin pod")
-			denyAllPolicyName := "deny-all"
-			denyAllPolicy := &netv1.NetworkPolicy{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "networking.k8s.io/v1",
-					Kind:       "NetworkPolicy",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      denyAllPolicyName,
-					Namespace: namespace,
-				},
-				Spec: netv1.NetworkPolicySpec{
-					PodSelector: metav1.LabelSelector{
-						MatchLabels: httpbinLabels,
-					},
-					PolicyTypes: []netv1.PolicyType{
-						netv1.PolicyTypeIngress,
-					},
-				},
-			}
-			Expect(utils.KubectlApply(denyAllPolicy)).To(Succeed())
-			DeferCleanup(func() {
-				_ = utils.KubectlDelete(denyAllPolicy)
-			})
-
-			By("waiting for the httpbin pod to be running")
-			Eventually(func() string {
-				v, err := utils.KubectlGetJSONPath(httpbin, "pod", ".status.phase")
-				if err != nil {
-					t.Log(err)
-					return ""
-				}
-				t.Log(v)
-				return v
-			}).Within(120 * time.Second).WithPolling(5 * time.Second).Should(Equal("Running"))
-
-			By("verifying curl from curlpod to httpbin fails before applying policy")
-			Eventually(func(g Gomega) {
-				failure, res, err := utils.CurlFailure(podRef, targetURL, 5)
-				if err != nil {
-					t.Log(err)
-				}
-				if !failure && err == nil {
-					t.Log(res)
-				}
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(failure).To(BeTrue())
-			}).Within(60 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
-
-			By("applying a FQDN NetworkPolicy that allows ingress to httpbin from curlpod")
-			policy := &v1alpha1.NetworkPolicy{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "fqdn.konsole.is/v1alpha1",
-					Kind:       "NetworkPolicy",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      networkPolicyName,
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.NetworkPolicySpec{
-					PodSelector: metav1.LabelSelector{
-						MatchLabels: httpbinLabels,
-					},
-					Ingress: []v1alpha1.IngressRule{
-						utils.TCPIngressRule([]v1alpha1.FQDN{v1alpha1.FQDN(curlPodFQDN)}, []int{80}),
-					},
-					BlockPrivateIPs:       false,
-					EnabledNetworkType:    v1alpha1.Ipv4,
-					TTLSeconds:            30,
-					ResolveTimeoutSeconds: 3,
-				},
-			}
-			Expect(utils.KubectlApply(policy)).To(Succeed())
-
-			By("eventually observing curl to httpbin succeeds")
-			Eventually(func(g Gomega) {
-				success, res, err := utils.CurlSuccess(podRef, targetURL, 5)
-				if err != nil {
-					t.Log(err)
-				}
-				if !success && err == nil {
-					t.Log(res)
-				}
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(success).To(BeTrue())
-			}).Within(60 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
-
-			By("consistently observing curl to httpbin succeeds")
-			Consistently(func(g Gomega) {
-				success, res, err := utils.CurlSuccess(podRef, targetURL, 5)
-				if err != nil {
-					t.Log(err)
-				}
-				if !success && err == nil {
-					t.Log(res)
-				}
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(success).To(BeTrue())
-			}).Within(60 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
-
-			By("deleting the NetworkPolicy to restore access")
-			Expect(utils.KubectlDelete(policy)).To(Succeed())
-
-			By("eventually observing curl to httpbin is blocked again")
-			Eventually(func(g Gomega) {
-				failure, res, err := utils.CurlFailure(podRef, targetURL, 5)
-				if err != nil {
-					t.Log(err)
-				}
-				if !failure && err == nil {
-					t.Log(res)
-				}
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(failure).To(BeTrue())
-			}).Should(Succeed())
 		})
 	})
 })

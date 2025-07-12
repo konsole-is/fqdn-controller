@@ -17,17 +17,6 @@ func TCPNetworkPolicyPort(port int, endPort int) netv1.NetworkPolicyPort {
 	}
 }
 
-func TCPIngressRule(fqdns []v1alpha1.FQDN, ports []int) v1alpha1.IngressRule {
-	var policyPorts []netv1.NetworkPolicyPort
-	for _, port := range ports {
-		policyPorts = append(policyPorts, TCPNetworkPolicyPort(port, port))
-	}
-	return v1alpha1.IngressRule{
-		Ports:     policyPorts,
-		FromFQDNS: fqdns,
-	}
-}
-
 func TCPEgressRule(fqdns []v1alpha1.FQDN, ports []int) v1alpha1.EgressRule {
 	var policyPorts []netv1.NetworkPolicyPort
 	for _, port := range ports {

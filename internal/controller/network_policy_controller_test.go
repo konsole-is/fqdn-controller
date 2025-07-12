@@ -99,11 +99,9 @@ var _ = Describe("NetworkPolicy Controller", func() {
 						BlockPrivateIPs:       false,
 						EnabledNetworkType:    v1alpha1.All,
 						PodSelector:           testutils.PodSelector("foo", "bar"),
-						Ingress: []v1alpha1.IngressRule{
-							testutils.TCPIngressRule([]v1alpha1.FQDN{"example.com"}, []int{80, 443}),
-						},
 						Egress: []v1alpha1.EgressRule{
 							testutils.TCPEgressRule([]v1alpha1.FQDN{"google.com"}, []int{80, 443}),
+							testutils.TCPEgressRule([]v1alpha1.FQDN{"example.com"}, []int{80, 443}),
 						},
 					},
 				}
@@ -173,23 +171,8 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			By("Ensuring the underlying network policy has the correct pod selector")
 			Expect(networkPolicy.Spec.PodSelector).To(Equal(testutils.PodSelector("foo", "bar")))
 
-			By("Ensuring the underlying network policy has the correct ingress rules")
-			Expect(networkPolicy.Spec.Ingress).To(HaveLen(1))
-			Expect(networkPolicy.Spec.Ingress[0]).To(Equal(netv1.NetworkPolicyIngressRule{
-				Ports: []netv1.NetworkPolicyPort{
-					testutils.TCPNetworkPolicyPort(80, 80),
-					testutils.TCPNetworkPolicyPort(443, 443),
-				},
-				From: []netv1.NetworkPolicyPeer{
-					{
-						IPBlock: &netv1.IPBlock{
-							CIDR: "0.0.0.0/0",
-						},
-					},
-				},
-			}))
 			By("Ensuring the underlying network policy has the correct egress rules")
-			Expect(networkPolicy.Spec.Egress).To(HaveLen(1))
+			Expect(networkPolicy.Spec.Egress).To(HaveLen(2))
 			Expect(networkPolicy.Spec.Egress[0]).To(Equal(netv1.NetworkPolicyEgressRule{
 				Ports: []netv1.NetworkPolicyPort{
 					testutils.TCPNetworkPolicyPort(80, 80),
@@ -199,6 +182,19 @@ var _ = Describe("NetworkPolicy Controller", func() {
 					{
 						IPBlock: &netv1.IPBlock{
 							CIDR: "192.168.0.0/32",
+						},
+					},
+				},
+			}))
+			Expect(networkPolicy.Spec.Egress[1]).To(Equal(netv1.NetworkPolicyEgressRule{
+				Ports: []netv1.NetworkPolicyPort{
+					testutils.TCPNetworkPolicyPort(80, 80),
+					testutils.TCPNetworkPolicyPort(443, 443),
+				},
+				To: []netv1.NetworkPolicyPeer{
+					{
+						IPBlock: &netv1.IPBlock{
+							CIDR: "0.0.0.0/0",
 						},
 					},
 				},
@@ -216,8 +212,8 @@ var _ = Describe("NetworkPolicy Controller", func() {
 					// BlockPrivateIPs:    false,
 					// EnabledNetworkType: v1alpha1.All,
 					PodSelector: testutils.PodSelector("foo", "bar"),
-					Ingress: []v1alpha1.IngressRule{
-						testutils.TCPIngressRule([]v1alpha1.FQDN{"example.com"}, []int{80}),
+					Egress: []v1alpha1.EgressRule{
+						testutils.TCPEgressRule([]v1alpha1.FQDN{"example.com"}, []int{80}),
 					},
 				},
 			}
@@ -252,7 +248,7 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, updated)).To(Succeed())
 			Expect(*updated.Spec.RetryTimeoutSeconds).To(Equal(int32(3600)))
 			Expect(updated.Spec.BlockPrivateIPs).To(BeFalse())
-			Expect(updated.Spec.TTLSeconds).To(Equal(int32(300)))
+			Expect(updated.Spec.TTLSeconds).To(Equal(int32(60)))
 			Expect(updated.Spec.ResolveTimeoutSeconds).To(Equal(int32(3)))
 			Expect(updated.Spec.EnabledNetworkType).To(Equal(v1alpha1.Ipv4))
 			Expect(updated.Status.FQDNs).To(HaveLen(1))
@@ -298,8 +294,8 @@ var _ = Describe("NetworkPolicy Controller", func() {
 					BlockPrivateIPs:       false,
 					EnabledNetworkType:    v1alpha1.All,
 					PodSelector:           testutils.PodSelector("foo", "bar"),
-					Ingress: []v1alpha1.IngressRule{
-						testutils.TCPIngressRule([]v1alpha1.FQDN{"example.com"}, []int{80}),
+					Egress: []v1alpha1.EgressRule{
+						testutils.TCPEgressRule([]v1alpha1.FQDN{"example.com"}, []int{80}),
 					},
 				},
 			}
@@ -451,7 +447,7 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			Expect(status.LastTransitionTime).ToNot(BeZero())
 		})
 
-		It("should become not ready and delete network policy when all addresses are cleared", func() {
+		It("should become not ready when all addresses are cleared", func() {
 			By("Updating the RetryTimeoutSeconds value to 0 seconds")
 			np := &v1alpha1.NetworkPolicy{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, np)).To(Succeed())
@@ -492,11 +488,11 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal(string(v1alpha1.NetworkPolicyEmptyRules)))
 
-			By("Validating the underlying netv1.NetworkPolicy is deleted")
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, typeNamespacedName, &netv1.NetworkPolicy{})
-				return errors.IsNotFound(err)
-			}, 5*time.Second, 250*time.Millisecond).Should(BeTrue())
+			By("Validating the underlying netv1.NetworkPolicy has no addresses")
+			networkPolicy := &netv1.NetworkPolicy{}
+			err = k8sClient.Get(ctx, typeNamespacedName, networkPolicy)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(networkPolicy.Spec.Egress).To(HaveLen(0))
 		})
 	})
 
@@ -539,8 +535,8 @@ var _ = Describe("NetworkPolicy Controller", func() {
 					BlockPrivateIPs:       false,
 					EnabledNetworkType:    v1alpha1.All,
 					PodSelector:           testutils.PodSelector("foo", "bar"),
-					Ingress: []v1alpha1.IngressRule{
-						testutils.TCPIngressRule([]v1alpha1.FQDN{"example.com"}, []int{80}),
+					Egress: []v1alpha1.EgressRule{
+						testutils.TCPEgressRule([]v1alpha1.FQDN{"example.com"}, []int{80}),
 					},
 				},
 			}
@@ -567,10 +563,11 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			Expect(lookup["example.com"].Addresses).To(BeEmpty())
 			Expect(lookup["example.com"].ResolveReason).To(Equal(v1alpha1.NetworkPolicyResolveDomainNotFound))
 
-			By("Verifying underlying network policy is not created")
+			By("Verifying underlying network policy is created")
 			networkPolicy := &netv1.NetworkPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, networkPolicy)
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(networkPolicy.Spec.Egress).To(HaveLen(0))
 		})
 
 		AfterEach(func() {
@@ -625,8 +622,8 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			networkPolicy := &netv1.NetworkPolicy{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, networkPolicy)).To(Succeed())
 			Expect(networkPolicy.Spec.PodSelector).To(Equal(testutils.PodSelector("foo", "bar")))
-			Expect(networkPolicy.Spec.Ingress).To(HaveLen(1))
-			Expect(networkPolicy.Spec.Ingress[0].From).To(ContainElement(
+			Expect(networkPolicy.Spec.Egress).To(HaveLen(1))
+			Expect(networkPolicy.Spec.Egress[0].To).To(ContainElement(
 				netv1.NetworkPolicyPeer{
 					IPBlock: &netv1.IPBlock{
 						CIDR: "1.1.1.1/32",

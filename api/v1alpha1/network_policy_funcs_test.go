@@ -339,118 +339,6 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
-func Test_IngressRule_toNetworkPolicyIngressRule(t *testing.T) {
-	tests := []struct {
-		name         string
-		rule         IngressRule
-		ipMap        map[FQDN]*FQDNStatus
-		blockPrivate bool
-		expectNil    bool
-		expectCIDRs  []string
-	}{
-		{
-			name: "no matching FQDNs, returns nil",
-			rule: IngressRule{
-				FromFQDNS: []FQDN{"missing.com"},
-			},
-			ipMap:        map[FQDN]*FQDNStatus{},
-			blockPrivate: false,
-			expectNil:    true,
-		},
-		{
-			name: "one public CIDR allowed (blockPrivate = false)",
-			rule: IngressRule{
-				FromFQDNS: []FQDN{"public.com"},
-			},
-			ipMap: map[FQDN]*FQDNStatus{
-				"public.com": {
-					Addresses: []string{"8.8.8.8/32"},
-				},
-			},
-			blockPrivate: false,
-			expectCIDRs:  []string{"8.8.8.8/32"},
-		},
-		{
-			name: "private CIDR excluded by default (blockPrivate = true)",
-			rule: IngressRule{
-				FromFQDNS: []FQDN{"private.com"},
-			},
-			ipMap: map[FQDN]*FQDNStatus{
-				"private.com": {
-					Addresses: []string{"192.168.0.1/32"},
-				},
-			},
-			blockPrivate: true,
-			expectNil:    true,
-		},
-		{
-			name: "override blockPrivate = true (should exclude private)",
-			rule: IngressRule{
-				FromFQDNS:       []FQDN{"private.com"},
-				BlockPrivateIPs: boolPtr(true),
-			},
-			ipMap: map[FQDN]*FQDNStatus{
-				"private.com": {
-					Addresses: []string{"192.168.0.1/32"},
-				},
-			},
-			blockPrivate: false,
-			expectNil:    true,
-		},
-		{
-			name: "override blockPrivate = false (should allow private)",
-			rule: IngressRule{
-				FromFQDNS:       []FQDN{"private.com"},
-				BlockPrivateIPs: boolPtr(false),
-			},
-			ipMap: map[FQDN]*FQDNStatus{
-				"private.com": {
-					Addresses: []string{"192.168.0.1/32"},
-				},
-			},
-			blockPrivate: true,
-			expectCIDRs:  []string{"192.168.0.1/32"},
-		},
-		{
-			name: "includes ports in result",
-			rule: IngressRule{
-				FromFQDNS: []FQDN{"test.com"},
-				Ports: []netv1.NetworkPolicyPort{
-					{Port: intStrPtr(80)},
-				},
-			},
-			ipMap: map[FQDN]*FQDNStatus{
-				"test.com": {
-					Addresses: []string{"1.2.3.4/32"},
-				},
-			},
-			blockPrivate: false,
-			expectCIDRs:  []string{"1.2.3.4/32"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rule := tt.rule
-			result := rule.toNetworkPolicyIngressRule(tt.ipMap, tt.blockPrivate)
-			if tt.expectNil {
-				assert.Nil(t, result)
-			} else {
-				assert.NotNil(t, result)
-				var cidrs []string
-				for _, peer := range result.From {
-					if peer.IPBlock != nil {
-						cidrs = append(cidrs, peer.IPBlock.CIDR)
-					}
-				}
-				assert.ElementsMatch(t, tt.expectCIDRs, cidrs)
-				if len(rule.Ports) > 0 {
-					assert.Equal(t, rule.Ports, result.Ports)
-				}
-			}
-		})
-	}
-}
 func Test_EgressRule_toNetworkPolicyEgressRule(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -566,18 +454,6 @@ func Test_NetworkPolicy_FQDNs(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name: "only ingress FQDNs",
-			policy: NetworkPolicy{
-				Spec: NetworkPolicySpec{
-					Ingress: []IngressRule{
-						{FromFQDNS: []FQDN{"a.com", "b.com"}},
-						{FromFQDNS: []FQDN{"b.com", "c.com"}},
-					},
-				},
-			},
-			expected: []FQDN{"a.com", "b.com", "c.com"},
-		},
-		{
 			name: "only egress FQDNs",
 			policy: NetworkPolicy{
 				Spec: NetworkPolicySpec{
@@ -588,20 +464,6 @@ func Test_NetworkPolicy_FQDNs(t *testing.T) {
 				},
 			},
 			expected: []FQDN{"x.com", "y.com", "z.com"},
-		},
-		{
-			name: "combined ingress and egress with overlap",
-			policy: NetworkPolicy{
-				Spec: NetworkPolicySpec{
-					Ingress: []IngressRule{
-						{FromFQDNS: []FQDN{"a.com", "b.com"}},
-					},
-					Egress: []EgressRule{
-						{ToFQDNS: []FQDN{"b.com", "c.com"}},
-					},
-				},
-			},
-			expected: []FQDN{"a.com", "b.com", "c.com"},
 		},
 	}
 
@@ -617,15 +479,14 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		np          NetworkPolicy
-		statuses    []FQDNStatus
-		expectNil   bool
-		wantIngress []string
-		wantEgress  []string
+		name       string
+		np         NetworkPolicy
+		statuses   []FQDNStatus
+		expectNil  bool
+		wantEgress []string
 	}{
 		{
-			name: "no ingress or egress rules",
+			name: "no egress rules",
 			np: NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "empty", Namespace: "default"},
 				Spec: NetworkPolicySpec{
@@ -634,21 +495,6 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 			},
 			statuses:  []FQDNStatus{},
 			expectNil: true,
-		},
-		{
-			name: "one public CIDR in ingress",
-			np: NetworkPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "ingress-only", Namespace: "default"},
-				Spec: NetworkPolicySpec{
-					PodSelector:     metav1.LabelSelector{},
-					Ingress:         []IngressRule{{FromFQDNS: []FQDN{"a.com"}}},
-					BlockPrivateIPs: true,
-				},
-			},
-			statuses: []FQDNStatus{
-				{FQDN: "a.com", Addresses: []string{MustCIDR("8.8.8.8/32").String()}},
-			},
-			wantIngress: []string{"8.8.8.8/32"},
 		},
 		{
 			name: "one public CIDR in egress",
@@ -666,39 +512,19 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 			wantEgress: []string{"1.1.1.1/32"},
 		},
 		{
-			name: "both ingress and egress with valid public IPs",
-			np: NetworkPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "both-valid", Namespace: "default"},
-				Spec: NetworkPolicySpec{
-					PodSelector:     metav1.LabelSelector{},
-					Ingress:         []IngressRule{{FromFQDNS: []FQDN{"a.com"}}},
-					Egress:          []EgressRule{{ToFQDNS: []FQDN{"b.com"}}},
-					BlockPrivateIPs: true,
-				},
-			},
-			statuses: []FQDNStatus{
-				{FQDN: "a.com", Addresses: []string{MustCIDR("8.8.8.8/32").String()}},
-				{FQDN: "b.com", Addresses: []string{MustCIDR("1.1.1.1/32").String()}},
-			},
-			wantIngress: []string{"8.8.8.8/32"},
-			wantEgress:  []string{"1.1.1.1/32"},
-		},
-		{
-			name: "both ingress and egress with only private IPs",
+			name: "egress with only private IPs",
 			np: NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "both-private", Namespace: "default"},
 				Spec: NetworkPolicySpec{
 					PodSelector:     metav1.LabelSelector{},
-					Ingress:         []IngressRule{{FromFQDNS: []FQDN{"a.com"}}},
 					Egress:          []EgressRule{{ToFQDNS: []FQDN{"b.com"}}},
 					BlockPrivateIPs: true,
 				},
 			},
 			statuses: []FQDNStatus{
-				{FQDN: "a.com", Addresses: []string{MustCIDR("192.168.0.1/32").String()}},
 				{FQDN: "b.com", Addresses: []string{MustCIDR("10.0.0.1/32").String()}},
 			},
-			expectNil: true,
+			wantEgress: []string{},
 		},
 	}
 
@@ -711,14 +537,7 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 			}
 			assert.NotNil(t, result)
 
-			var gotIngress, gotEgress []string
-			for _, rule := range result.Spec.Ingress {
-				for _, peer := range rule.From {
-					if peer.IPBlock != nil {
-						gotIngress = append(gotIngress, peer.IPBlock.CIDR)
-					}
-				}
-			}
+			var gotEgress []string
 			for _, rule := range result.Spec.Egress {
 				for _, peer := range rule.To {
 					if peer.IPBlock != nil {
@@ -726,14 +545,11 @@ func Test_NetworkPolicy_ToNetworkPolicy(t *testing.T) {
 					}
 				}
 			}
-			assert.ElementsMatch(t, tt.wantIngress, gotIngress)
 			assert.ElementsMatch(t, tt.wantEgress, gotEgress)
 
 			var wantTypes []netv1.PolicyType
-			if len(tt.wantIngress) > 0 {
-				wantTypes = append(wantTypes, netv1.PolicyTypeIngress)
-			}
-			if len(tt.wantEgress) > 0 {
+			// We want to block all traffic if egress was defined, even if all IPs were filtered out
+			if len(tt.np.Spec.Egress) > 0 {
 				wantTypes = append(wantTypes, netv1.PolicyTypeEgress)
 			}
 			assert.ElementsMatch(t, wantTypes, result.Spec.PolicyTypes)
