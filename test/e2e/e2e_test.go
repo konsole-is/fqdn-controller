@@ -353,14 +353,14 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		It("should enable egress access to google.com using a FQDN NetworkPolicy", func() {
-			httpDomain := "http://google.com"
-			httpsDomain := "https://google.com"
+		It("should enable egress access to example.com using a FQDN NetworkPolicy", func() {
+			httpDomain := "http://example.com"
+			httpsDomain := "https://example.com"
 			podRef := types.NamespacedName{Name: curlPodName, Namespace: namespace}
 			networkPolicyName := "enable-google-egress"
 			t := GinkgoT()
 
-			By("verifying curl to google.com succeeds before applying deny-all policy")
+			By("verifying curl to example.com succeeds before applying deny-all policy")
 			Eventually(func(g Gomega) {
 				success, res, err := utils.CurlSuccess(podRef, httpDomain, 5)
 				if err != nil {
@@ -432,7 +432,7 @@ var _ = Describe("Manager", Ordered, func() {
 				_ = utils.KubectlDelete(denyAllPolicy)
 			})
 
-			By("observing curl to google.com:80 is blocked")
+			By("observing curl to example.com:80 is blocked")
 			Eventually(func(g Gomega) {
 				failure, res, err := utils.CurlFailure(podRef, httpDomain, 5)
 				if err != nil {
@@ -445,7 +445,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(failure).To(BeTrue(), "expected curl to %s to fail", httpDomain)
 			}).Within(60 * time.Second).WithPolling(time.Second).Should(Succeed())
 
-			By("applying a NetworkPolicy that allows egress to google.com on port 80")
+			By("applying a NetworkPolicy that allows egress to example.com on port 80")
 			policy := &v1alpha1.NetworkPolicy{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "fqdn.konsole.is/v1alpha1",
@@ -460,11 +460,11 @@ var _ = Describe("Manager", Ordered, func() {
 						MatchLabels: curlPodLabels,
 					},
 					Egress: []v1alpha1.EgressRule{
-						utils.TCPEgressRule([]v1alpha1.FQDN{"google.com"}, []int{80}),
+						utils.TCPEgressRule([]v1alpha1.FQDN{"example.com"}, []int{80}),
 					},
 					BlockPrivateIPs:       false,
 					EnabledNetworkType:    v1alpha1.Ipv4,
-					TTLSeconds:            5, // Google is tough, constantly changing IPs
+					TTLSeconds:            30,
 					ResolveTimeoutSeconds: 2,
 				},
 			}
@@ -472,7 +472,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 			time.Sleep(3 * time.Second)
 
-			By("observing curl to google.com:80 is allowed")
+			By("observing curl to example.com:80 is allowed")
 			Eventually(func(g Gomega) {
 				success, res, err := utils.CurlSuccess(podRef, httpDomain, 5)
 				if err != nil {
@@ -485,7 +485,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(success).To(BeTrue(), "expected curl to %s to succeed", httpDomain)
 			}).Within(60 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
 
-			By("consistently observing curl to google.com:80 is successful")
+			By("consistently observing curl to example.com:80 is successful")
 			Consistently(func(g Gomega) {
 				success, res, err := utils.CurlSuccess(podRef, httpDomain, 5)
 				if err != nil {
@@ -498,7 +498,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(success).To(BeTrue(), "expected curl to %s to succeed", httpDomain)
 			}).Within(60 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
 
-			By("ensuring that curl to google.com:443 is blocked")
+			By("ensuring that curl to example.com:443 is blocked")
 			Eventually(func(g Gomega) {
 				failure, res, err := utils.CurlFailure(podRef, httpsDomain, 5)
 				if err != nil {
@@ -514,7 +514,7 @@ var _ = Describe("Manager", Ordered, func() {
 			By("deleting the NetworkPolicy")
 			Expect(utils.KubectlDelete(policy)).To(Succeed())
 
-			By("eventually observing curl to google.com:80 is blocked")
+			By("eventually observing curl to example.com:80 is blocked")
 			Eventually(func(g Gomega) {
 				failure, res, err := utils.CurlFailure(podRef, httpDomain, 5)
 				if err != nil {
