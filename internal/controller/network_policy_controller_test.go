@@ -492,7 +492,7 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			networkPolicy := &netv1.NetworkPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, networkPolicy)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(networkPolicy.Spec.Egress).To(HaveLen(0))
+			Expect(networkPolicy.Spec.Egress).To(BeEmpty())
 		})
 	})
 
@@ -567,7 +567,7 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			networkPolicy := &netv1.NetworkPolicy{}
 			err = k8sClient.Get(ctx, typeNamespacedName, networkPolicy)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(networkPolicy.Spec.Egress).To(HaveLen(0))
+			Expect(networkPolicy.Spec.Egress).To(BeEmpty())
 		})
 
 		AfterEach(func() {

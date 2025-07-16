@@ -3,13 +3,14 @@ package utils
 import (
 	"bytes"
 	"fmt"
+	"os/exec"
+	"strconv"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
-	"os/exec"
-	"strconv"
-	"strings"
 )
 
 // NewCurlPod returns a long-lived curl pod definition with the given name, namespace, and labels.

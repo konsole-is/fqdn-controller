@@ -19,6 +19,11 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
+
 	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -26,10 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -68,9 +69,15 @@ var _ = Describe("Manager", Ordered, func() {
 		By("labeling the namespace to enforce the restricted security policy")
 		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
 			"pod-security.kubernetes.io/enforce=restricted")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to label for restricted security policy")
+
 		// required if network policy is used, see: config/default/kustomization.yaml
 		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
 			"metrics=enabled")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to label for metrics")
+
 		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
 			"webhooks=enabled")
 		_, err = utils.Run(cmd)
