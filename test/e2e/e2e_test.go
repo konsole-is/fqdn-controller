@@ -24,16 +24,16 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
+	"github.com/konsole-is/fqdn-controller/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/konsole-is/fqdn-controller/test/utils"
 )
@@ -49,6 +49,8 @@ const metricsServiceName = "fqdn-controller-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "fqdn-controller-metrics-binding"
+
+const controllerName = "fqdn-controller-controller-manager"
 
 var _ = Describe("Manager", Ordered, func() {
 	var (
@@ -364,7 +366,7 @@ var _ = Describe("Manager", Ordered, func() {
 			httpDomain := "http://example.com"
 			httpsDomain := "https://example.com"
 			podRef := types.NamespacedName{Name: curlPodName, Namespace: namespace}
-			networkPolicyName := "enable-google-egress"
+			networkPolicyName := "enable-example-egress"
 			t := GinkgoT()
 
 			By("verifying curl to example.com succeeds before applying deny-all policy")
@@ -533,6 +535,131 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(failure).To(BeTrue(), "expected curl to %s fail after deleting the policy", httpDomain)
 			}).Within(60 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
+		})
+
+		It("should reconcile FQDN network policies after restart", func() {
+			t := GinkgoT()
+			const policyNamespace = "test-policy-namespace"
+
+			By("creating the network policy namespace")
+			cmd := exec.Command("kubectl", "create", "namespace", policyNamespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				cmd = exec.Command("kubectl", "delete", "namespace", policyNamespace)
+				_, err = utils.Run(cmd)
+			})
+
+			By("Creating two FQDN network policies")
+			policy1 := &v1alpha1.NetworkPolicy{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "fqdn.konsole.is/v1alpha1",
+					Kind:       "NetworkPolicy",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "reconcile-test-1",
+					Namespace: policyNamespace,
+				},
+				Spec: v1alpha1.NetworkPolicySpec{
+					PodSelector: metav1.LabelSelector{MatchLabels: curlPodLabels},
+					Egress: []v1alpha1.EgressRule{
+						utils.TCPEgressRule([]v1alpha1.FQDN{"example.com"}, []int{80}),
+					},
+					BlockPrivateIPs:       false,
+					EnabledNetworkType:    v1alpha1.Ipv4,
+					TTLSeconds:            60,
+					ResolveTimeoutSeconds: 2,
+				},
+			}
+			policy2 := policy1.DeepCopy()
+			policy2.Name = "reconcile-test-2"
+			Expect(utils.KubectlApply(policy1)).To(Succeed())
+			Expect(utils.KubectlApply(policy2)).To(Succeed())
+
+			DeferCleanup(func() {
+				_ = utils.KubectlDelete(policy1)
+				_ = utils.KubectlDelete(policy2)
+			})
+
+			By("Waiting for both policies to have .status.latestLookupTime populated")
+			for _, p := range []*v1alpha1.NetworkPolicy{policy1, policy2} {
+				Eventually(func(g Gomega) {
+					lookupTime, err := utils.KubectlGetJSONPath(p, "fqdn", ".status.latestLookupTime")
+					t.Log(lookupTime)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(lookupTime).NotTo(BeEmpty())
+				}).WithTimeout(60 * time.Second).Should(Succeed())
+			}
+
+			By("scaling controller manager to zero")
+			cmd = exec.Command("kubectl", "scale", "deployment", controllerName, "-n", namespace, "--replicas=0")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to scale down the controller-manager")
+
+			By("waiting for controller manager pods to be gone")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pods",
+					"-l", "control-plane=controller-manager",
+					"-n", namespace,
+					"-o", "jsonpath={.items[*].status.phase}",
+				)
+				out, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(out).To(BeEmpty(), "Expected no controller-manager pods to be running")
+			}).WithTimeout(30 * time.Second).Should(Succeed())
+
+			By("noting the FQDN policy last lookup time")
+			lookupBefore := make(map[string]string)
+			for _, p := range []*v1alpha1.NetworkPolicy{policy1, policy2} {
+				lookupTime, err := utils.KubectlGetJSONPath(p, "fqdn", ".status.latestLookupTime")
+				Expect(err).NotTo(HaveOccurred())
+				lookupBefore[p.Name] = lookupTime
+			}
+
+			By("scaling up the controller manager")
+			cmd = exec.Command("kubectl", "scale", "deployment", controllerName, "-n", namespace, "--replicas=2")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to scale up the controller-manager")
+
+			By("validating that the controller-manager pod is running as expected")
+			verifyControllerUp := func(g Gomega) {
+				// Get the name of the controller-manager pod
+				cmd := exec.Command("kubectl", "get",
+					"pods", "-l", "control-plane=controller-manager",
+					"-o", "go-template={{ range .items }}"+
+						"{{ if not .metadata.deletionTimestamp }}"+
+						"{{ .metadata.name }}"+
+						"{{ \"\\n\" }}{{ end }}{{ end }}",
+					"-n", namespace,
+				)
+
+				podOutput, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
+				podNames := utils.GetNonEmptyLines(podOutput)
+				g.Expect(podNames).To(HaveLen(2), "expected 2 controller pods running")
+				controllerPodName = podNames[0]
+				g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+
+				// Validate the pod's status
+				cmd = exec.Command("kubectl", "get",
+					"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
+					"-n", namespace,
+				)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Running"), "Incorrect controller-manager pod status")
+			}
+			Eventually(verifyControllerUp).Should(Succeed())
+
+			By("asserting that the network policy latest lookup time changes")
+			for _, p := range []*v1alpha1.NetworkPolicy{policy1, policy2} {
+				Eventually(func(g Gomega) {
+					newGen, err := utils.KubectlGetJSONPath(p, "fqdn", ".status.latestLookupTime")
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(newGen).ToNot(BeEmpty())
+					g.Expect(newGen).ToNot(Equal(lookupBefore[p.Name]))
+				}).WithTimeout(60*time.Second).Should(Succeed(), "Latest lookup time should change")
+			}
 		})
 	})
 })

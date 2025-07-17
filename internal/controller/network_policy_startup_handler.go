@@ -11,7 +11,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const startupAnnotationKey = "fqdn-controller.konsole.is/startup-trigger"
+const startupAnnotationKey = LabelPrefix + "startup-trigger"
 
 var policyQueuer = queueAllNetworkPolicies
 var sleepFn = time.Sleep
@@ -42,10 +42,12 @@ func queueAllNetworkPolicies(ctx context.Context, cli client.Client, startupTime
 		return err
 	}
 	for _, np := range policies.Items {
-		patch := client.MergeFrom(np.DeepCopy())
-		metav1.SetMetaDataAnnotation(&np.ObjectMeta, startupAnnotationKey, annotationValue)
-		if err := cli.Patch(ctx, &np, patch); err != nil {
-			return err
+		if !np.Status.LatestLookupTime.After(startupTime) {
+			patch := client.MergeFrom(np.DeepCopy())
+			metav1.SetMetaDataAnnotation(&np.ObjectMeta, startupAnnotationKey, annotationValue)
+			if err := cli.Patch(ctx, &np, patch); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

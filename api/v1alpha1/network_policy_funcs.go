@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -88,6 +89,19 @@ func isAllowed(cidrString string, globalBlock bool, ruleBlock *bool) bool {
 	return true
 }
 
+func sortPeersByCIDR(peers []netv1.NetworkPolicyPeer) {
+	sort.SliceStable(peers, func(i, j int) bool {
+		// Make sure both peers have IPBlocks
+		if peers[i].IPBlock == nil {
+			return false
+		}
+		if peers[j].IPBlock == nil {
+			return true
+		}
+		return peers[i].IPBlock.CIDR < peers[j].IPBlock.CIDR
+	})
+}
+
 func getPeers(fqdns []FQDN, ips map[FQDN]*FQDNStatus, globalBlock bool, ruleBlock *bool) []netv1.NetworkPolicyPeer {
 	var peers []netv1.NetworkPolicyPeer
 
@@ -102,6 +116,7 @@ func getPeers(fqdns []FQDN, ips map[FQDN]*FQDNStatus, globalBlock bool, ruleBloc
 			}
 		}
 	}
+	sortPeersByCIDR(peers)
 	return peers
 }
 
@@ -121,30 +136,32 @@ func (r *EgressRule) toNetworkPolicyEgressRule(ips map[FQDN]*FQDNStatus, blockPr
 
 // FQDNs Returns all unique FQDNs defined in the network policy
 func (np *NetworkPolicy) FQDNs() []FQDN {
-	var set = make(map[FQDN]struct{})
+	set := make(map[FQDN]struct{})
 	for _, rule := range np.Spec.Egress {
 		for _, fqdn := range rule.ToFQDNS {
 			set[fqdn] = struct{}{}
 		}
 	}
 
-	var fqdns []FQDN
+	fqdns := make([]FQDN, 0, len(set))
 	for fqdn := range set {
 		fqdns = append(fqdns, fqdn)
 	}
+
+	sort.SliceStable(fqdns, func(i, j int) bool {
+		return fqdns[i] < fqdns[j]
+	})
+
 	return fqdns
 }
 
 // ToNetworkPolicy converts the NetworkPolicy to a netv1.NetworkPolicy.
 // If no Egress rules are specified, nil is returned.
 func (np *NetworkPolicy) ToNetworkPolicy(fqdnStatuses []FQDNStatus) *netv1.NetworkPolicy {
-	var policies []netv1.PolicyType
-	if len(np.Spec.Egress) > 0 {
-		policies = append(policies, netv1.PolicyTypeEgress)
-	}
-	if len(policies) == 0 {
+	if len(np.Spec.Egress) == 0 {
 		return nil
 	}
+
 	lookup := FQDNStatusList(fqdnStatuses).LookupTable()
 	var egress []netv1.NetworkPolicyEgressRule
 	for _, fqdnRule := range np.Spec.Egress {
@@ -158,7 +175,7 @@ func (np *NetworkPolicy) ToNetworkPolicy(fqdnStatuses []FQDNStatus) *netv1.Netwo
 		Spec: netv1.NetworkPolicySpec{
 			PodSelector: np.Spec.PodSelector,
 			Egress:      egress,
-			PolicyTypes: policies,
+			PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
 		},
 	}
 }

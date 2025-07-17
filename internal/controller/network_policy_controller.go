@@ -20,6 +20,9 @@ import (
 	"context"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
 	"github.com/konsole-is/fqdn-controller/pkg/network"
 	"github.com/konsole-is/fqdn-controller/pkg/utils"
 	netv1 "k8s.io/api/networking/v1"
@@ -156,8 +159,16 @@ func (r *NetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager, ctx context
 	}()
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.NetworkPolicy{}).
+		For(
+			&v1alpha1.NetworkPolicy{},
+			builder.WithPredicates(
+				predicate.GenerationChangedPredicate{},
+				ManagedLabelsChangedPredicate,
+			),
+		).
 		Named("fqdnnetworkpolicy").
-		Owns(&netv1.NetworkPolicy{}).
+		Owns(&netv1.NetworkPolicy{}, builder.WithPredicates(
+			predicate.GenerationChangedPredicate{},
+		)).
 		Complete(r)
 }

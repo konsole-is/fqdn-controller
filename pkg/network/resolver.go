@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
@@ -32,6 +33,24 @@ type DNSResolverResult struct {
 	Message string
 	// CIDRs found for the given domain if no error occurred
 	CIDRs []*v1alpha1.CIDR
+}
+
+func NewDNSResolverResult(
+	domain v1alpha1.FQDN,
+	CIDRs []*v1alpha1.CIDR,
+	error error) *DNSResolverResult {
+
+	sort.SliceStable(CIDRs, func(i, j int) bool {
+		return CIDRs[i].String() < CIDRs[j].String()
+	})
+
+	return &DNSResolverResult{
+		Domain:  domain,
+		Error:   error,
+		Message: resolveMessage(error),
+		Status:  resolveReason(error),
+		CIDRs:   CIDRs,
+	}
 }
 
 // resolveReason returns the reason for the status of the resolve result
@@ -207,13 +226,7 @@ func (r *DNSResolver) Resolve(
 			cidrs, err := r.lookupIP(childCtx, networkType, rFQDN)
 
 			select {
-			case results <- &DNSResolverResult{
-				Domain:  rFQDN,
-				Error:   err,
-				Status:  resolveReason(err),
-				Message: resolveMessage(err),
-				CIDRs:   cidrs,
-			}:
+			case results <- NewDNSResolverResult(fqdn, cidrs, err):
 			case <-ctx.Done():
 				// context cancelled while trying to send
 			}

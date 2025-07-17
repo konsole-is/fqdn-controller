@@ -9,6 +9,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+func KubectlGet(object client.Object, kind string) (string, error) {
+	cmd := exec.Command("kubectl", "get", kind, object.GetName(), "-n", object.GetNamespace(), "-o", "yaml")
+	return Run(cmd)
+}
+
 func KubectlApply(object client.Object) error {
 	objYaml, err := yaml.Marshal(object)
 	if err != nil {
