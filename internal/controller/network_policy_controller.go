@@ -150,25 +150,10 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *NetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.Context) error {
-	// Note that we can safely call this from here because we are waiting for leader election in the function
-	// If leader election is not enabled, mrg.Elected() returns once mgr.Start() has been called, which happens
-	// after we return from SetupWithManager
-	go func() {
-		r.queueExistingPoliciesOnLeaderElection(ctx, mgr)
-	}()
-
+func (r *NetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(
-			&v1alpha1.NetworkPolicy{},
-			builder.WithPredicates(
-				predicate.GenerationChangedPredicate{},
-				ManagedLabelsChangedPredicate,
-			),
-		).
+		For(&v1alpha1.NetworkPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("fqdnnetworkpolicy").
-		Owns(&netv1.NetworkPolicy{}, builder.WithPredicates(
-			predicate.GenerationChangedPredicate{},
-		)).
+		Owns(&netv1.NetworkPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }

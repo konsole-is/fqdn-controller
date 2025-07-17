@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    name: Build and Publish Artifacts
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
+
+    env:
+      TAG: ${{ github.ref_name }}
+      IMG: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: make docker-build IMG=${IMG}
+
+      - name: Push Docker image
+        run: make docker-push IMG=${IMG}
+
+      - name: Generate Kustomize release manifests
+        run: |
+          make build-installer IMG=${IMG}
+          cp dist/install.yaml fqdn-controller.yaml
+          kustomize build config/crd > crds.yaml
+
+      - name: Upload release manifest
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            fqdn-controller.yaml
+            crds.yaml
+
+      - name: Install helm
+        uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.18.4
+        id: install
+
+      - name: Generate Helm chart
+        run: |
+          make helm TAG=${TAG}
+          find charts/fqdn-controller/templates -type f -name '*-crd.yaml' -delete
+
+      - name: Package Helm chart
+        run: |
+          helm package charts/fqdn-controller
+          mkdir -p chart-out
+          mv fqdn-controller-${TAG}.tgz chart-out/
+
+      - name: Upload Helm chart
+        uses: softprops/action-gh-release@v2
+        with:
+          files: chart-out/fqdn-controller-${{ env.TAG }}.tgz
+
+      - name: Set up Git for GitHub Pages
+        run: |
+          git config --global user.email "github-actions@users.noreply.github.com"
+          git config --global user.name "github-actions"
+
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Copy Helm chart and update index.yaml
+        run: |
+          mkdir -p gh-pages/charts
+          cp chart-out/fqdn-controller-${TAG}.tgz gh-pages/charts/
+          cd gh-pages/charts
+          helm repo index . --url https://konsole-is.github.io/fqdn-controller/charts
+
+      - name: Push updated Helm repo to gh-pages
+        run: |
+          cd gh-pages
+          git add charts
+          git commit -m "Update Helm repo for ${TAG}" || echo "No changes to commit"
+          git push origin gh-pages

@@ -1,5 +1,6 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+TAG ?= 0.0.1
+IMG ?= controller:$(TAG)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -159,6 +160,18 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
+
+HELMIFY ?= $(LOCALBIN)/helmify
+
+.PHONY: helmify
+helmify: $(HELMIFY) ## Download helmify locally if necessary.
+$(HELMIFY): $(LOCALBIN)
+	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@latest
+
+helm: manifests kustomize helmify build-installer
+	cat dist/install.yaml | $(HELMIFY) -v charts/fqdn-controller
+	sed -i "s/^version: .*/version: ${TAG}/" charts/fqdn-controller/Chart.yaml
+	sed -i "s/^appVersion: .*/appVersion: \"${TAG}\"/" charts/fqdn-controller/Chart.yaml
 
 ##@ Deployment
 

@@ -25,3 +25,5 @@ go.work
 *.swp
 *.swo
 *~
+dist
+cover.out

@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "fqdn-controller.fullname" . }}-networkpolicy-admin-role
+  labels:
+  {{- include "fqdn-controller.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - fqdn.konsole.is
+  resources:
+  - networkpolicies
+  verbs:
+  - '*'
+- apiGroups:
+  - fqdn.konsole.is
+  resources:
+  - networkpolicies/status
+  verbs:
+  - get

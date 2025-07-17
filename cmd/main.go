@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	goruntime "runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -85,7 +86,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.IntVar(&maxConcurrentResolves, "max-concurrent-resolves", 8,
+	flag.IntVar(&maxConcurrentResolves, "max-concurrent-resolves", 0,
 		"How many goroutines can be spawned to resolve FQDNs to IP addresses.")
 	opts := zap.Options{
 		Development: true,
@@ -96,7 +97,10 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	if maxConcurrentResolves <= 0 {
-		maxConcurrentResolves = 1
+		maxConcurrentResolves = goruntime.NumCPU()
+		if maxConcurrentResolves < 1 {
+			maxConcurrentResolves = 1
+		}
 	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
@@ -220,7 +224,7 @@ func main() {
 		EventRecorder:         mgr.GetEventRecorderFor("fqdn-controller"),
 		DNSResolver:           network.NewDNSResolver(),
 		MaxConcurrentResolves: maxConcurrentResolves,
-	}).SetupWithManager(mgr, ctx); err != nil {
+	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NetworkPolicy")
 		os.Exit(1)
 	}

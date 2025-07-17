@@ -1,9 +1,30 @@
 apiVersion: fqdn.konsole.is/v1alpha1
 kind: NetworkPolicy
 metadata:
+  name: networkpolicy-sample
+  namespace: default
   labels:
     app.kubernetes.io/name: fqdn-controller
-    app.kubernetes.io/managed-by: kustomize
-  name: networkpolicy-sample
+    app.kubernetes.io/managed-by: helm
 spec:
-  # TODO(user): Add fields here
+  podSelector:
+    matchLabels:
+      app: my-app
+  enabledNetworkType: ipv4
+  ttlSeconds: 60
+  resolveTimeoutSeconds: 3
+  retryTimeoutSeconds: 3600
+  blockPrivateIPs: false
+  egress:
+    - toFQDNS:
+        - api.example.com
+        - github.com
+      ports:
+        - protocol: TCP
+          port: 443
+    - toFQDNS:
+        - telemetry.example.net
+      ports:
+        - protocol: TCP
+          port: 443
+      blockPrivateIPs: true
