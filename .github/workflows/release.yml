@@ -65,7 +65,8 @@ jobs:
 
       - name: Sign and package helm chart
         run: |
-          gpg --export-secret-keys $HELM_GPG_CR_KEY > secring.gpg
+          echo "$HELM_GPG_PASSPHRASE" | \
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --export-secret-keys "$HELM_GPG_CR_KEY" > secring.gpg
           cd dist
           helm package --sign --key "$HELM_GPG_CR_KEY" --keyring secring.gpg chart
 
