@@ -57,7 +57,7 @@ jobs:
           files: |
             install.yaml
             crds.yaml
-            chart-${TAG}.tgz
+            fqdn-controller-${TAG}.tgz
 
       - name: Set up Git for GitHub Pages
         if: github.event.release.prerelease == false
@@ -76,7 +76,7 @@ jobs:
         if: github.event.release.prerelease == false
         run: |
           mkdir -p gh-pages/charts
-          cp chart-${TAG}.tgz gh-pages/charts/
+          cp fqdn-controller-${TAG}.tgz gh-pages/charts/
           cd gh-pages/charts
           helm repo index . --url https://konsole-is.github.io/fqdn-controller/charts
 
