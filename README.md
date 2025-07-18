@@ -100,7 +100,7 @@ spec:
       blockPrivateIPs: true
 ```
 
-## Development
+## 🧪 Development
 
 The repository is configured for [ASDF](https://asdf-vm.com/) to install project dependencies.
 

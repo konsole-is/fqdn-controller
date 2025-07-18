@@ -70,22 +70,26 @@ jobs:
           mv fqdn-controller-${TAG}.tgz chart-out/
 
       - name: Upload Helm chart
+        if: github.event.release.prerelease == false
         uses: softprops/action-gh-release@v2
         with:
           files: chart-out/fqdn-controller-${{ env.TAG }}.tgz
 
       - name: Set up Git for GitHub Pages
+        if: github.event.release.prerelease == false
         run: |
           git config --global user.email "github-actions@users.noreply.github.com"
           git config --global user.name "github-actions"
 
       - name: Checkout gh-pages branch
+        if: github.event.release.prerelease == false
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           path: gh-pages
 
       - name: Copy Helm chart and update index.yaml
+        if: github.event.release.prerelease == false
         run: |
           mkdir -p gh-pages/charts
           cp chart-out/fqdn-controller-${TAG}.tgz gh-pages/charts/
@@ -93,6 +97,7 @@ jobs:
           helm repo index . --url https://konsole-is.github.io/fqdn-controller/charts
 
       - name: Push updated Helm repo to gh-pages
+        if: github.event.release.prerelease == false
         run: |
           cd gh-pages
           git add charts
