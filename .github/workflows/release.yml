@@ -28,9 +28,11 @@ jobs:
           PASSPHRASE: ${{ secrets.HELM_GPG_PASSPHRASE }}
         run: |
           echo -n "$GPG_KEY" > key.asc
-          gpg --import key.asc
+          echo "$PASSPHRASE" | \
+          gpg --pinentry-mode loopback --passphrase-fd 0 --import key.asc
           mkdir -p ~/.gnupg-legacy
           chmod 700 ~/.gnupg-legacy
+          echo "$PASSPHRASE" | \
           gpg --pinentry-mode loopback --passphrase-fd 0 --export-secret-keys $GPG_KEY_ID > ~/.gnupg-legacy/secring.gpg
           gpg --export $GPG_KEY_ID > ~/.gnupg-legacy/pubring.gpg
           chmod 600 ~/.gnupg-legacy/secring.gpg
