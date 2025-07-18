@@ -69,9 +69,9 @@ jobs:
           PASSPHRASE: ${{ secrets.HELM_GPG_PASSPHRASE }}
         run: |
           echo "PASSPHRASE" | \
-          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --export-secret-keys "GPG_KEY_ID" > secring.gpg
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --export-secret-keys "$GPG_KEY_ID" > secring.gpg
           cd dist
-          helm package --sign --key "GPG_KEY_ID" --keyring secring.gpg chart
+          helm package --sign --key "$GPG_KEY_ID" --keyring secring.gpg chart
 
       - name: Upload release files
         uses: softprops/action-gh-release@v2
