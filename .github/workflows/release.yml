@@ -70,7 +70,6 @@ jobs:
         run: |
           echo "$PASSPHRASE" | \
           gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --export-secret-keys "$GPG_KEY_ID" > secring.gpg
-          cd dist
           helm package --sign --key "$GPG_KEY_ID" --keyring secring.gpg chart
 
       - name: Upload release files
