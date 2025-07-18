@@ -19,6 +19,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Generate and diff
+        run: |
+          make manifests
+          make generate
+          git diff --exit-code
+
       - name: Run linter
         uses: golangci/golangci-lint-action@v8
         with:
