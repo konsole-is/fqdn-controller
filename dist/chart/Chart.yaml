@@ -1,0 +1,9 @@
+apiVersion: v2
+name: fqdn-controller
+description: A Helm chart to distribute the project fqdn-controller
+type: application
+version: 0.0.1
+appVersion: "0.0.1"
+sources:
+  - https://github.com/konsole-is/fqdn-controller
+icon: "https://github.com/konsole-is/fqdn-controller/blob/master/docs/chart_icon.png?raw=true"

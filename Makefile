@@ -160,18 +160,24 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
+	kubebuilder edit --plugins=helm/v1-alpha
+	sed -i'' -e "s|^\(\s*repository:\s*\).*|\1\"$(shell echo ${IMG} | cut -d ':' -f 1)\"|" dist/chart/values.yaml
+	sed -i'' -e "s|^\(\s*tag:\s*\).*|\1\"$(shell echo ${IMG} | cut -d ':' -f 2)\"|" dist/chart/values.yaml
+	sed -i'' -e "s/^version:.*/version: ${TAG}/" dist/chart/Chart.yaml
+	sed -i'' -e "s/^appVersion:.*/appVersion: \"${TAG}\"/" dist/chart/Chart.yaml
 
-HELMIFY ?= $(LOCALBIN)/helmify
-
-.PHONY: helmify
-helmify: $(HELMIFY) ## Download helmify locally if necessary.
-$(HELMIFY): $(LOCALBIN)
-	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@latest
-
-helm: manifests kustomize helmify build-installer
-	cat dist/install.yaml | $(HELMIFY) -v charts/fqdn-controller
-	sed -i "s/^version: .*/version: ${TAG}/" charts/fqdn-controller/Chart.yaml
-	sed -i "s/^appVersion: .*/appVersion: \"${TAG}\"/" charts/fqdn-controller/Chart.yaml
+#
+#HELMIFY ?= $(LOCALBIN)/helmify
+#
+#.PHONY: helmify
+#helmify: $(HELMIFY) ## Download helmify locally if necessary.
+#$(HELMIFY): $(LOCALBIN)
+#	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@latest
+#
+#helm: manifests kustomize helmify build-installer
+#	cat dist/install.yaml | $(HELMIFY) -v charts/fqdn-controller
+#	sed -i "s/^version: .*/version: ${TAG}/" charts/fqdn-controller/Chart.yaml
+#	sed -i "s/^appVersion: .*/appVersion: \"${TAG}\"/" charts/fqdn-controller/Chart.yaml
 
 ##@ Deployment
 

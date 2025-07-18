@@ -42,15 +42,15 @@ import (
 const namespace = "fqdn-controller-system"
 
 // serviceAccountName created for the project
-const serviceAccountName = "fqdn-controller-controller-manager"
+const serviceAccountName = "fqdn-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "fqdn-controller-controller-manager-metrics-service"
+const metricsServiceName = "fqdn-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "fqdn-controller-metrics-binding"
 
-const controllerName = "fqdn-controller-controller-manager"
+const controllerName = "fqdn-controller-manager"
 
 var _ = Describe("Manager", Ordered, func() {
 	var (

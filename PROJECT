@@ -6,6 +6,8 @@ cliVersion: 4.6.0
 domain: konsole.is
 layout:
 - go.kubebuilder.io/v4
+plugins:
+  helm.kubebuilder.io/v1-alpha: {}
 projectName: fqdn-controller
 repo: github.com/konsole-is/fqdn-controller
 resources:

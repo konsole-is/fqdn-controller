@@ -27,32 +27,26 @@ priorities.
 
 ## 🚀 Installation
 
-### Prerequisites
-
-1. **Install cert-manager CRDs** (for webhooks):
-
-   ```bash
-   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.crds.yaml
-   ```
-
-2. Install fqdn-controller CRDs
-
-   ```bash
-   curl -sL https://github.com/konsole-is/fqdn-controller/releases/<version>/download/crds.yaml | kubectl apply -f -
-    ```
-
 ### Helm installation
+
+If you wish to manage the CRDs outside the helm chart you can install them with
+
+```bash
+curl -sL https://github.com/konsole-is/fqdn-controller/releases/download/<version>/crds.yaml | kubectl apply -f -
+```
+
+Chart installation
 
 ```bash
 helm repo add konsole https://konsole-is.github.io/fqdn-controller/charts
 helm repo update
-helm install fqdn-controller konsole/fqdn-controller --version 0.1.0
+helm install fqdn-controller konsole/fqdn-controller --version <version>
 ```
 
 ### Kubectl installation
 
 ```bash
-curl -sL https://github.com/konsole-is/fqdn-controller/releases/<version>/download/fqdn-controller.yaml | kubectl apply -f -
+curl -sL https://github.com/konsole-is/fqdn-controller/releases/download/<version>/install.yaml | kubectl apply -f -
 ```
 
 Note: Will contain only 1 replica unless modified.
@@ -109,8 +103,8 @@ Run `make help` for information on development commands.
 ## 📦 Releases
 
 - Helm Chart: [Artifact Hub]()
-- CRD Bundle: [GitHub Releases]()
-- Release manifest: [Github Releases]()
+- CRD Bundle: [GitHub Releases](https://github.com/konsole-is/fqdn-controller/releases)
+- Release manifest: [GitHub Releases](https://github.com/konsole-is/fqdn-controller/releases)
 
 ## 🤝 Contributing
 

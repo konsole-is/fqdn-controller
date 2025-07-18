@@ -25,5 +25,8 @@ go.work
 *.swp
 *.swo
 *~
-dist
+dist/**/*
+!dist/chart/
+!dist/chart/Chart.yaml
+!dist/chart/README.md
 cover.out
