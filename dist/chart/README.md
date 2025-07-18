@@ -26,3 +26,13 @@ helm repo add konsole https://konsole-is.github.io/fqdn-controller/charts
 helm repo update
 helm install fqdn-controller konsole/fqdn-controller --version <version>
 ```
+
+## Verifying chart signatures
+
+All charts are signed using GPG. You can verify the authenticity and integrity of a chart using the .prov file and the 
+public GPG key.
+
+```helm
+gpg --keyserver hkps://keys.openpgp.org --recv-keys 6D2CDAA28E7B8D360B8C63817D7F57D9C5527906
+helm pull konsole/fqdn-controller --version <version> --verify
+```
