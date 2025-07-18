@@ -11,9 +11,9 @@ Check out the [GitHub Repository](https://github.com/konsole-is/fqdn-controller)
 
 Install cert-manager in your cluster if you intend to enable webhooks.
    
-## Installation (optional)
+## Installation
 
-If you wish to manage the CRDs outside the helm chart you can install then with
+If you wish to manage the CRDs outside the helm chart you can install them with
 
 ```bash
 curl -sL https://github.com/konsole-is/fqdn-controller/releases/download/<version>/crds.yaml | kubectl apply -f -
