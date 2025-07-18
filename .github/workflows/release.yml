@@ -57,7 +57,21 @@ jobs:
         run: |
           make build-installer IMG=${IMG}
           kustomize build config/crd > crds.yaml
-          helm package dist/chart
+
+      - name: Import GPG key for Helm signing
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.HELM_GPG_PASSPHRASE }}
+
+      - name: Sign and package helm chart
+        run: |
+          gpg --export-secret-keys $HELM_GPG_CR_KEY > secring.gpg
+          helm package \
+            --sign \
+            --key "$HELM_GPG_CR_KEY" \
+            --keyring secring.gpg \
+            dist/chart
 
       - name: Upload release files
         uses: softprops/action-gh-release@v2

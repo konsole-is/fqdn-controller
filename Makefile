@@ -1,6 +1,6 @@
 # Image URL to use all building/pushing image targets
 TAG ?= 0.0.1
-IMG ?= controller:$(TAG)
+IMG ?= example.com/fqdn-controller:$(TAG)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -165,6 +165,9 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	sed -i'' -e "s|^\(\s*tag:\s*\).*|\1\"$(shell echo ${IMG} | cut -d ':' -f 2)\"|" dist/chart/values.yaml
 	sed -i'' -e "s/^version:.*/version: ${TAG}/" dist/chart/Chart.yaml
 	sed -i'' -e "s/^appVersion:.*/appVersion: \"${TAG}\"/" dist/chart/Chart.yaml
+	helm plugin install https://github.com/losisin/helm-values-schema-json.git >/dev/null 2>&1 || true
+	helm plugin update schema >/dev/null 2>&1
+	helm schema -f dist/chart/values.yaml -o dist/chart/values.schema.json
 
 #
 #HELMIFY ?= $(LOCALBIN)/helmify
