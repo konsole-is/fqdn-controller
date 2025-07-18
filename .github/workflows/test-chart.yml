@@ -19,7 +19,10 @@ jobs:
 
       - name: Install kubebuilder
         run: |
-          curl -L -o kubebuilder "https://go.kubebuilder.io/dl/v4.6.0/$(go env GOOS)/$(go env GOARCH)"
+          VERSION=4.6.0
+          OS=$(go env GOOS)
+          ARCH=$(go env GOARCH)
+          curl -L -o kubebuilder "https://github.com/kubernetes-sigs/kubebuilder/releases/download/v${VERSION}/kubebuilder_${OS}_${ARCH}"
           chmod +x kubebuilder && sudo mv kubebuilder /usr/local/bin/
 
       - name: Install the latest version of kind
