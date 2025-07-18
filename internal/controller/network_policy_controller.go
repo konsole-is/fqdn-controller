@@ -25,7 +25,6 @@ import (
 
 	"github.com/konsole-is/fqdn-controller/pkg/network"
 	"github.com/konsole-is/fqdn-controller/pkg/utils"
-	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
@@ -154,6 +153,5 @@ func (r *NetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.NetworkPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("fqdnnetworkpolicy").
-		Owns(&netv1.NetworkPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
