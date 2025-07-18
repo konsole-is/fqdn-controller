@@ -56,30 +56,26 @@ jobs:
       - name: Generate Kustomize release manifests
         run: |
           make build-installer IMG=${IMG}
-          kustomize build config/crd > crds.yaml
 
       - name: Import GPG key for Helm signing
         uses: crazy-max/ghaction-import-gpg@v6
         with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg_private_key: ${{ secrets.HELM_GPG_KEYRING }}
           passphrase: ${{ secrets.HELM_GPG_PASSPHRASE }}
 
       - name: Sign and package helm chart
         run: |
           gpg --export-secret-keys $HELM_GPG_CR_KEY > secring.gpg
-          helm package \
-            --sign \
-            --key "$HELM_GPG_CR_KEY" \
-            --keyring secring.gpg \
-            dist/chart
+          cd dist
+          helm package --sign --key "$HELM_GPG_CR_KEY" --keyring secring.gpg chart
 
       - name: Upload release files
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            install.yaml
-            crds.yaml
-            fqdn-controller-${TAG}.tgz
+            dist/install.yaml
+            dist/crds.yaml
+            dist/fqdn-controller-${TAG}.tgz
 
       - name: Set up Git for GitHub Pages
         if: github.event.release.prerelease == false
@@ -98,7 +94,7 @@ jobs:
         if: github.event.release.prerelease == false
         run: |
           mkdir -p gh-pages/charts
-          cp fqdn-controller-${TAG}.tgz gh-pages/charts/
+          cp dist/fqdn-controller-${TAG}.tgz gh-pages/charts/
           cd gh-pages/charts
           helm repo index . --url https://konsole-is.github.io/fqdn-controller/charts
 

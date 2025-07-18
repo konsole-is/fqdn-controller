@@ -160,14 +160,15 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
-	kubebuilder edit --plugins=helm/v1-alpha
+	$(KUSTOMIZE) build config/crd > dist/crds.yaml
+	$(KUBEBUILDER) edit --plugins=helm/v1-alpha
 	sed -i'' -e "s|^\(\s*repository:\s*\).*|\1\"$(shell echo ${IMG} | cut -d ':' -f 1)\"|" dist/chart/values.yaml
 	sed -i'' -e "s|^\(\s*tag:\s*\).*|\1\"$(shell echo ${IMG} | cut -d ':' -f 2)\"|" dist/chart/values.yaml
 	sed -i'' -e "s/^version:.*/version: ${TAG}/" dist/chart/Chart.yaml
 	sed -i'' -e "s/^appVersion:.*/appVersion: \"${TAG}\"/" dist/chart/Chart.yaml
-	helm plugin install https://github.com/losisin/helm-values-schema-json.git >/dev/null 2>&1 || true
-	helm plugin update schema >/dev/null 2>&1
-	helm schema -f dist/chart/values.yaml -o dist/chart/values.schema.json
+	$(HELM) plugin install https://github.com/losisin/helm-values-schema-json.git >/dev/null 2>&1 || true
+	$(HELM) plugin update schema >/dev/null 2>&1
+	$(HELM) schema -f dist/chart/values.yaml -o dist/chart/values.schema.json
 
 #
 #HELMIFY ?= $(LOCALBIN)/helmify
@@ -216,9 +217,11 @@ $(LOCALBIN):
 KUBECTL ?= kubectl
 KIND ?= kind
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
+KUBEBUILDER ?= $(LOCALBIN)/kubebuilder
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+HELM ?= $(LOCALBIN)/helm
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
