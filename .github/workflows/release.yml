@@ -37,6 +37,7 @@ jobs:
           gpg --export $GPG_KEY_ID > ~/.gnupg-legacy/pubring.gpg
           chmod 600 ~/.gnupg-legacy/secring.gpg
           chmod 600 ~/.gnupg-legacy/pubring.gpg
+          gpg --no-default-keyring --secret-keyring ~/.gnupg-legacy/secring.gpg --list-secret-keys
 
       - name: Set up Go
         uses: actions/setup-go@v5
