@@ -23,18 +23,25 @@ jobs:
 
       - name: Import GPG key for Helm signing
         env:
-          GPG_KEY: ${{ secrets.HELM_GPG_KEYRING }}
-          GPG_KEY_ID: ${{ secrets.HELM_GPG_CR_KEY }}
+          KEY: ${{ secrets.HELM_GPG_KEYRING }}
+          FINGERPRINT: ${{ secrets.HELM_GPG_KEY_FINGERPRINT }}
           PASSPHRASE: ${{ secrets.HELM_GPG_PASSPHRASE }}
         run: |
-          echo -n "$GPG_KEY" > key.asc
+          # 1. create passphrase locally and add GH secrets
+          # gpg --full-generate-key -> generates a gpg key with a fingerprint and selected passphrase
+          # gpg --armor --export-secret-key me@email.com -> use output create create HELM_GPG_KEYRING
+          # run the below commands locally once to generate the public key and publish it on keys.openpgp.org
+          # publish the legacy version (~/.gnupg-legacy/pubring.gpg)
+          # 2. import the secret from secret variables
+          echo -n "$KEY" > key.asc
           echo "$PASSPHRASE" | \
           gpg --pinentry-mode loopback --passphrase-fd 0 --import key.asc
+          # 3. Create legacy version of the secret (gpg v1 for helm)
           mkdir -p ~/.gnupg-legacy
           chmod 700 ~/.gnupg-legacy
           echo "$PASSPHRASE" | \
-          gpg --pinentry-mode loopback --passphrase-fd 0 --export-secret-keys $GPG_KEY_ID > ~/.gnupg-legacy/secring.gpg
-          gpg --export $GPG_KEY_ID > ~/.gnupg-legacy/pubring.gpg
+          gpg --pinentry-mode loopback --passphrase-fd 0 --export-secret-keys $FINGERPRINT > ~/.gnupg-legacy/secring.gpg
+          gpg --export $FINGERPRINT > ~/.gnupg-legacy/pubring.gpg
           chmod 600 ~/.gnupg-legacy/secring.gpg
           chmod 600 ~/.gnupg-legacy/pubring.gpg
           gpg --no-default-keyring --secret-keyring ~/.gnupg-legacy/secring.gpg --list-secret-keys
@@ -64,11 +71,12 @@ jobs:
 
       - name: Package helm chart
         env:
-          GPG_KEY_ID: ${{ secrets.HELM_GPG_CR_KEY }}
+          # IMPORTANT NOTE: This must not be the fingerprint but a substring of email/user
+          GPG_KEY_UID: ${{ secrets.HELM_GPG_KEY_UID }}
           PASSPHRASE: ${{ secrets.HELM_GPG_PASSPHRASE }}
         run: |
           echo "$PASSPHRASE" | \
-          helm package --sign --key "$GPG_KEY_ID" --keyring ~/.gnupg-legacy/secring.gpg --passphrase-file "-" dist/chart
+          helm package --sign --key "$GPG_KEY_UID" --keyring ~/.gnupg-legacy/secring.gpg --passphrase-file "-" dist/chart
           mv fqdn-controller-${TAG}.tgz dist/
           mv fqdn-controller-${TAG}.tgz.prov dist/
 
