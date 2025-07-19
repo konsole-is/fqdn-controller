@@ -15,6 +15,26 @@ priorities.
 
 ---
 
+## 📚 Table of Contents
+
+- [✨ Features](#-features)
+- [🧾 CRD Overview](#-crd-overview)
+    - [Important Behavior Notes](#important-behavior-notes)
+    - [Resource Kind & Short Name](#resource-kind--short-name)
+    - [Key Fields](#key-fields)
+    - [IP Filtering](#ip-filtering)
+    - [IP Retention on Failure](#ip-retention-on-failure)
+    - [Status and Observability](#status-and-observability)
+- [📄 Custom Resource Example](#custom-resource-example)
+- [🚀 Installation](#-installation)
+    - [Helm Installation](#helm-installation)
+    - [Kubectl Installation](#kubectl-installation)
+- [🧪 Development](#-development)
+- [📦 Releases](#-releases)
+- [🤝 Contributing](#-contributing)
+
+---
+
 ## ✨ Features
 
 - Create `NetworkPolicy` egress rules based on FQDNs
@@ -107,7 +127,7 @@ succeeded again.
 If you do **not** wish to retain IP addresses for potentially transient resolution failures, you can set 
 `retryTimeoutSeconds` to zero.
 
-### 📈 Status and Observability
+### Status and Observability
 
 Each FQDN-based NetworkPolicy CR includes detailed status information to help you monitor behavior and troubleshoot 
 DNS or policy issues.
