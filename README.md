@@ -123,8 +123,8 @@ DNS issues do not disrupt network access.
 
 - `NXDOMAIN` (aka DOMAIN_NOT_FOUND): The domain does not exist (permanent failure)
 
-After the retention period (retryTimeoutSeconds), the FQDN will be removed from the active policy if resolution has not 
-succeeded again.
+After the retention period (`retryTimeoutSeconds`), the FQDN will be removed from the active policy if resolution has 
+not succeeded again.
 
 If you do **not** wish to retain IP addresses for potentially transient resolution failures, you can set 
 `retryTimeoutSeconds` to zero.
