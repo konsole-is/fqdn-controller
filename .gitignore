@@ -29,5 +29,5 @@ dist/**/*
 !dist/chart/
 !dist/chart/Chart.yaml
 !dist/chart/README.md
-!dist/chart_icon.ico
+!dist/chart_icon.png
 cover.out
