@@ -73,6 +73,8 @@ jobs:
           helm package --sign --key "$GPG_KEY_UID" --keyring ~/.gnupg-legacy/secring.gpg --passphrase-file "-" dist/chart
           mv fqdn-controller-${TAG}.tgz dist/
           mv fqdn-controller-${TAG}.tgz.prov dist/
+          cp fqdn-controller-${TAG}.tgz chart.tgz
+          cp fqdn-controller-${TAG}.tgz.prov chart.tgz.prov
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -93,8 +95,8 @@ jobs:
           files: |
             dist/install.yaml
             dist/crds.yaml
-            dist/fqdn-controller-${{ env.TAG }}.tgz
-            dist/fqdn-controller-${{ env.TAG }}.tgz.prov
+            chart.tgz
+            chart.tgz.prov
 
       - name: Set up Git for GitHub Pages
         if: github.event.release.prerelease == false
