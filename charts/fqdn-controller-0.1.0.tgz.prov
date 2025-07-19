@@ -1,0 +1,32 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+apiVersion: v2
+appVersion: 0.1.0
+description: A Helm chart to distribute the project fqdn-controller
+icon: https://github.com/konsole-is/fqdn-controller/blob/master/dist/chart_icon.png?raw=true
+name: fqdn-controller
+sources:
+- - https://github.com/konsole-is/fqdn-controller
+type: application
+version: 0.1.0
+
+...
+files:
+  fqdn-controller-0.1.0.tgz: sha256:8587e224a718440651037ea4bb03bb7d6bd65bc15179a3c250a69fab7426403e
+-----BEGIN PGP SIGNATURE-----
+
+wsFcBAEBCgAQBQJoexANCRB9f1fZxVJ5BgAAmHsQAL4PMI96Q4KC53ZO0OGkDuiT
+YK1uLlFLrEaZxdWuc56CAw38sUmoXuL7RPkHj3oIYdGTAohtrB4cK0Lk7WxFSoti
+NwIeOe/Pju1qMMc32Utf+h9+7+XEvuAlVkmNkXYbpVLR5cpcwF5jdatAC3zmjMQO
+H/si7Bii8LPMH6vnu/+9gOv4Jv1fD6NBJr1Rk5LVnW3+NhIkhR/QdLF40fxERzyn
+JEUjLf9+xIHIenqYqZLvprYfPpBOTWzgRpDgHiyJeu7cGxDPUqAAHyBN8rXDlNYQ
+ltyvOvwVFwjdwEWE5nldjr+uG+N717jLkXu6B33SoU1VSrZzNPel+f03d+igBafI
+wzVZbq/xPyETTZbC2ohQPSXX5a9l2OrkzTpkpd6urgmrNPfAE1CDWW38TcVze+ep
+s1vYiSo+UV9ablo66GyS3nuyBuxgfiP5SFsBMbEUA4nDVWoaUKXO+jURR/1QaSea
+pTv1OZmO1DfSuAY84FGy3H6UckOQ+4kusXhNL6dcwE+S2vtwWyzMWbPl3II46hn4
+H+6BMfRl8kAo4tVRZTBj8bvth5I0u0AZ0bXcLIJl70MtTjc3wvhEHHveWquMfa3H
+T0F2cByReVZAN5rT+wRY9ZQCPH6QlJat/2B48IzU5Dx78qQ/kXuVyIeiAA5KvHF5
+PtNvJ23bwPT1wvPeLh19
+=I9nj
+-----END PGP SIGNATURE-----
