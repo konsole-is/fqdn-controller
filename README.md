@@ -73,7 +73,7 @@ kubectl get fqdn                   # shorthand
 kubectl get fqdnnetworkpolicy     # full resource name
 ```
 
-Use these when inspecting or automating management of FQDN-based policies in your cluster.
+Use these when inspecting or managing FQDN-based policies in your cluster.
 
 ### Key Fields
 
