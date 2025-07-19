@@ -27,16 +27,10 @@ jobs:
           FINGERPRINT: ${{ secrets.HELM_GPG_KEY_FINGERPRINT }}
           PASSPHRASE: ${{ secrets.HELM_GPG_PASSPHRASE }}
         run: |
-          # 1. create passphrase locally and add GH secrets
-          # gpg --full-generate-key -> generates a gpg key with a fingerprint and selected passphrase
-          # gpg --armor --export-secret-key me@email.com -> use output create create HELM_GPG_KEYRING
-          # run the below commands locally once to generate the public key and publish it on keys.openpgp.org
-          # publish the legacy version (~/.gnupg-legacy/pubring.gpg)
-          # 2. import the secret from secret variables
+          # See https://gist.github.com/sourcehawk/ce6346cf0df5e53ced46402b9a1356f2
           echo -n "$KEY" > key.asc
           echo "$PASSPHRASE" | \
           gpg --pinentry-mode loopback --passphrase-fd 0 --import key.asc
-          # 3. Create legacy version of the secret (gpg v1 for helm)
           mkdir -p ~/.gnupg-legacy
           chmod 700 ~/.gnupg-legacy
           echo "$PASSPHRASE" | \
@@ -99,8 +93,8 @@ jobs:
           files: |
             dist/install.yaml
             dist/crds.yaml
-            dist/fqdn-controller-${TAG}.tgz
-            dist/fqdn-controller-${TAG}.tgz.prov
+            dist/fqdn-controller-${{ env.TAG }}.tgz
+            dist/fqdn-controller-${{ env.TAG }}.tgz.prov
 
       - name: Set up Git for GitHub Pages
         if: github.event.release.prerelease == false
