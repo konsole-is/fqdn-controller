@@ -50,11 +50,13 @@ priorities.
 The NetworkPolicy custom resource allows you to specify egress rules by domain name. The controller performs DNS
 resolution on these FQDNs and applies the resolved IPs into [standard Kubernetes NetworkPolicy objects](https://kubernetes.io/docs/concepts/services-networking/network-policies/).
 
-### Important Behavior Notes
+> [!IMPORTANT]
+>  If your pods rely on DNS, you must define a separate policy that allows egress to CoreDNS or KubeDNS.
+>  Since you are considering an FQDN based egress policy, this is highly likely the case.
 
-- **DNS Access Required**: If your pods rely on DNS, you must define a separate policy that allows egress to CoreDNS or KubeDNS.
-
-- **No IPs = Deny All**: If no IPs are resolved for a rule, egress traffic is blocked (matching standard Kubernetes NetworkPolicy behavior).
+> [!IMPORTANT]
+> **No IPs = Egress Deny All**. If no IPs are resolved for a rule, egress traffic is blocked. This conforms with standard 
+> Kubernetes NetworkPolicy behavior.
 
 ### Resource Kind & Short Name
 
