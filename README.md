@@ -36,6 +36,23 @@ resolution on these FQDNs and applies the resolved IPs into [standard Kubernetes
 
 - **No IPs = Deny All**: If no IPs are resolved for a rule, egress traffic is blocked (matching standard Kubernetes NetworkPolicy behavior).
 
+### Resource Kind & Short Name
+
+This controller defines a custom resource with the kind `NetworkPolicy` (under the fqdn.konsole.is API group).
+To avoid conflicts with the built-in Kubernetes networking.k8s.io/v1 NetworkPolicy, the CRD is registered with:
+
+- Long name: `fqdnnetworkpolicy`
+- Short name: `fqdn`
+
+This allows you to interact with the resource easily via kubectl without clashing with the standard resource:
+
+```bash
+kubectl get fqdn                   # shorthand
+kubectl get fqdnnetworkpolicy     # full resource name
+```
+
+Use these when inspecting or automating management of FQDN-based policies in your cluster.
+
 ### Key Fields
 
 | Field                    | Description                                                            |
@@ -52,7 +69,7 @@ resolution on these FQDNs and applies the resolved IPs into [standard Kubernetes
 
 ### IP Filtering
 
-Private IPs (RFC1918) can be excluded from resolved FQDN results using the blockPrivateIPs setting. This helps enforce 
+Private IPs (RFC1918) can be excluded from resolved FQDN results using the `blockPrivateIPs` setting. This helps enforce 
 policies that restrict traffic to public endpoints only.
 
 - The default is `false` (private IPs are allowed).
@@ -65,27 +82,30 @@ policies that restrict traffic to public endpoints only.
 ### IP Retention on Failure
 
 When FQDN resolution fails, previously resolved IPs are not immediately removed. Instead, they are retained and continue 
-to be used in the underlying NetworkPolicy until the retryTimeoutSeconds window expires. This ensures that temporary 
+to be used in the underlying NetworkPolicy until the `retryTimeoutSeconds` window expires. This ensures that temporary 
 DNS issues do not disrupt network access.
 
 #### ✅ IPs are retained for:
 
-- TIMEOUT: DNS server did not respond in time
+- `TIMEOUT`: DNS server did not respond in time
 
-- TEMPORARY: A transient network error occurred
+- `TEMPORARY`: A transient network error occurred
 
-- UNKNOWN: The controller could not determine the exact error
+- `UNKNOWN`: The controller could not determine the exact error
 
-- OTHER_ERROR: Unspecified failure during resolution
+- `OTHER_ERROR`: Unspecified failure during resolution
 
 #### ❌ IPs are immediately dropped for:
 
-- INVALID_DOMAIN: FQDN format is invalid and cannot be resolved
+- `INVALID_DOMAIN`: FQDN format is invalid and cannot be resolved
 
-- NXDOMAIN (aka DOMAIN_NOT_FOUND): The domain does not exist (permanent failure)
+- `NXDOMAIN` (aka DOMAIN_NOT_FOUND): The domain does not exist (permanent failure)
 
 After the retention period (retryTimeoutSeconds), the FQDN will be removed from the active policy if resolution has not 
 succeeded again.
+
+If you do **not** wish to retain IP addresses for potentially transient resolution failures, you can set 
+`retryTimeoutSeconds` to zero.
 
 ### 📈 Status and Observability
 
@@ -130,7 +150,7 @@ DNS or policy issues.
 Some of these fields are also surfaced in `kubectl get` for quick inspection:
 
 ```bash
-kubectl get fqdn -n default
+kubectl get fqdn networkpolicy-sample
 NAME                   READY   RESOLVED   RESOLVED IPs   APPLIED IPs   LAST LOOKUP         AGE
 networkpolicy-sample   True    False      5              3             31s                 2m
 ```
