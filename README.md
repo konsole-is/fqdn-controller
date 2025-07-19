@@ -164,7 +164,7 @@ DNS or policy issues.
    Number of unique IPs currently applied to the underlying NetworkPolicy (after filtering, retries, and deduplication).
 
 - `totalAddressesCount`
-   Total number of all resolved IPs, including duplicates and ones filtered out due to blockPrivateIPs or other constraints.
+   Total number of all resolved IPs, including ones filtered out due to blockPrivateIPs or other constraints (after deduplication).
 
 -  `latestLookupTime`
    The last time this policy's FQDNs were resolved. Useful for tracking how fresh the IPs are.
