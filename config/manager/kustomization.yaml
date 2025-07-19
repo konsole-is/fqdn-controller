@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: example.com/fqdn-controller
-  newTag: v0.0.1
+  newTag: 0.0.1

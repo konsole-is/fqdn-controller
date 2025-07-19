@@ -24,12 +24,12 @@ func (np *NetworkPolicy) SetResolveCondition(reason NetworkPolicyResolveConditio
 
 // SetReadyConditionTrue sets the Ready condition to True with a standard success message.
 // Updates the ObservedGeneration to reflect the current spec generation.
-func (np *NetworkPolicy) SetReadyConditionTrue() {
+func (np *NetworkPolicy) SetReadyConditionTrue(reason NetworkPolicyReadyConditionReason, message string) {
 	meta.SetStatusCondition(&np.Status.Conditions, metav1.Condition{
 		Type:               string(NetworkPolicyReadyCondition),
 		Status:             metav1.ConditionTrue,
-		Reason:             string(NetworkPolicyReady),
-		Message:            "The network policy is ready.",
+		Reason:             string(reason),
+		Message:            message,
 		ObservedGeneration: np.GetGeneration(),
 	})
 	np.Status.ObservedGeneration = np.GetGeneration()

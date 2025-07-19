@@ -22,9 +22,8 @@ curl -sL https://github.com/konsole-is/fqdn-controller/releases/download/<versio
 Install the controller using the helm chart
 
 ```bash
-helm repo add konsole https://konsole-is.github.io/fqdn-controller/charts
-helm repo update
-helm install fqdn-controller konsole/fqdn-controller --version <version>
+helm repo add fqdn-controller https://konsole-is.github.io/fqdn-controller/charts
+helm install fqdn-controller fqdn-controller/fqdn-controller --version <version>
 ```
 
 ## Verifying chart signatures

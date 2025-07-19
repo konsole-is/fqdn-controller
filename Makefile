@@ -170,19 +170,6 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	helm plugin update schema >/dev/null 2>&1
 	helm schema -f dist/chart/values.yaml -o dist/chart/values.schema.json
 
-#
-#HELMIFY ?= $(LOCALBIN)/helmify
-#
-#.PHONY: helmify
-#helmify: $(HELMIFY) ## Download helmify locally if necessary.
-#$(HELMIFY): $(LOCALBIN)
-#	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@latest
-#
-#helm: manifests kustomize helmify build-installer
-#	cat dist/install.yaml | $(HELMIFY) -v charts/fqdn-controller
-#	sed -i "s/^version: .*/version: ${TAG}/" charts/fqdn-controller/Chart.yaml
-#	sed -i "s/^appVersion: .*/appVersion: \"${TAG}\"/" charts/fqdn-controller/Chart.yaml
-
 ##@ Deployment
 
 ifndef ignore-not-found
@@ -205,6 +192,15 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: helm-deploy
+helm-deploy: build-installer docker-build ## deploy locally built helm chart to kind cluster
+	$(KIND) load docker-image $(IMG) --name $(KIND_CLUSTER)
+	helm install fqdn-controller ./dist/chart -n fqdn-controller --create-namespace
+
+.PHONY: helm-undeploy
+helm-undeploy: ## delete the installed helm chart
+	helm delete fqdn-controller -n fqdn-controller
 
 ##@ Dependencies
 

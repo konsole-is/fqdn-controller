@@ -227,6 +227,12 @@ func (r NetworkPolicyResolveConditionReason) Transient() bool {
 //     (networking.k8s.io/v1)
 //
 // +kubebuilder:resource:path=fqdnnetworkpolicies,shortName=fqdn,singular=fqdnnetworkpolicy,scope=Namespaced
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Ready condition status"
+// +kubebuilder:printcolumn:name="Resolved",type=string,JSONPath=`.status.conditions[?(@.type=="Resolve")].status`,description="Resolve condition status"
+// +kubebuilder:printcolumn:name="Resolved IPs",type=integer,JSONPath=`.status.totalAddressesCount`,description="Number of resolved IPs before filtering"
+// +kubebuilder:printcolumn:name="Applied IPs",type=integer,JSONPath=`.status.appliedAddressCount`,description="Number of applied IPs"
+// +kubebuilder:printcolumn:name="Last Lookup",type=date,JSONPath=`.status.latestLookupTime`,description="Time of last FQDN resolve"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type NetworkPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

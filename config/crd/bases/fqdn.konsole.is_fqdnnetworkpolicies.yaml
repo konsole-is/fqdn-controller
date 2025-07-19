@@ -16,7 +16,31 @@ spec:
     singular: fqdnnetworkpolicy
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Ready condition status
+      jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - description: Resolve condition status
+      jsonPath: .status.conditions[?(@.type=="Resolve")].status
+      name: Resolved
+      type: string
+    - description: Number of resolved IPs before filtering
+      jsonPath: .status.totalAddressesCount
+      name: Resolved IPs
+      type: integer
+    - description: Number of applied IPs
+      jsonPath: .status.appliedAddressCount
+      name: Applied IPs
+      type: integer
+    - description: Time of last FQDN resolve
+      jsonPath: .status.latestLookupTime
+      name: Last Lookup
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-

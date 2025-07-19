@@ -61,6 +61,7 @@ type NetworkPolicyReconciler struct {
 // +kubebuilder:rbac:groups=fqdn.konsole.is,resources=fqdnnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=fqdn.konsole.is,resources=fqdnnetworkpolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=fqdn.konsole.is,resources=fqdnnetworkpolicies/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -131,7 +132,10 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// If the underlying network policy is empty we set a different status
 	// This happens when the FQDN's do not resole to any valid addresses
 	if utils.IsEmpty(networkPolicy) {
-		np.SetReadyConditionFalse(v1alpha1.NetworkPolicyEmptyRules, "Resolved to an empty NetworkPolicy")
+		np.SetReadyConditionTrue(
+			v1alpha1.NetworkPolicyEmptyRules,
+			"Resolved to an empty NetworkPolicy. Egress deny-all in effect.",
+		)
 		if err := r.Client.Status().Update(ctx, np); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -140,7 +144,7 @@ func (r *NetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Creation succeeded, update the status and requeue after TTL
-	np.SetReadyConditionTrue()
+	np.SetReadyConditionTrue(v1alpha1.NetworkPolicyReady, "The network policy is ready.")
 	if err := r.Client.Status().Update(ctx, np); err != nil {
 		return ctrl.Result{}, err
 	}
