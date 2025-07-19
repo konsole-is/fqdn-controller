@@ -3,9 +3,9 @@ entries:
   fqdn-controller:
   - apiVersion: v2
     appVersion: 0.0.1
-    created: "2025-07-19T00:26:01.019915311Z"
+    created: "2025-07-19T00:33:10.378181688Z"
     description: A Helm chart to distribute the project fqdn-controller
-    digest: dc465e9ddd9ed4334867d49cacf3ff1ab2930a217d3c1d61e8be60fb96c11721
+    digest: 38417e86fb3a6fd0f3b3ec4e3ade1c5d47f77eb1711415690aa0f963c5d9ca69
     icon: https://github.com/konsole-is/fqdn-controller/blob/master/dist/chart_icon.png?raw=true
     name: fqdn-controller
     sources:
@@ -14,4 +14,4 @@ entries:
     urls:
     - https://konsole-is.github.io/fqdn-controller/charts/fqdn-controller-0.0.1.tgz
     version: 0.0.1
-generated: "2025-07-19T00:26:01.019217279Z"
+generated: "2025-07-19T00:33:10.377501111Z"
