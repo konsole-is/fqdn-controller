@@ -71,10 +71,10 @@ jobs:
         run: |
           echo "$PASSPHRASE" | \
           helm package --sign --key "$GPG_KEY_UID" --keyring ~/.gnupg-legacy/secring.gpg --passphrase-file "-" dist/chart
-          mv fqdn-controller-${TAG}.tgz dist/
-          mv fqdn-controller-${TAG}.tgz.prov dist/
           cp fqdn-controller-${TAG}.tgz chart.tgz
           cp fqdn-controller-${TAG}.tgz.prov chart.tgz.prov
+          mv fqdn-controller-${TAG}.tgz dist/
+          mv fqdn-controller-${TAG}.tgz.prov dist/
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
