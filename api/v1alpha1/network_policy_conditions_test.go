@@ -12,7 +12,7 @@ func Test_SetReadyConditionTrue(t *testing.T) {
 	np := &NetworkPolicy{}
 	np.Generation = int64(2)
 	np.Status.ObservedGeneration = int64(1)
-	np.SetReadyConditionTrue()
+	np.SetReadyConditionTrue(NetworkPolicyReady, "Ready")
 
 	cond := meta.FindStatusCondition(np.Status.Conditions, string(NetworkPolicyReadyCondition))
 	assert.NotNil(t, cond)

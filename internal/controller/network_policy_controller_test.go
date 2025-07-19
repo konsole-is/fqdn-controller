@@ -447,7 +447,7 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			Expect(status.LastTransitionTime).ToNot(BeZero())
 		})
 
-		It("should become not ready when all addresses are cleared", func() {
+		It("should stay ready when all addresses are cleared (empty rules)", func() {
 			By("Updating the RetryTimeoutSeconds value to 0 seconds")
 			np := &v1alpha1.NetworkPolicy{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, np)).To(Succeed())
@@ -485,7 +485,7 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			// Ready condition should be set to not ready
 			cond := meta.FindStatusCondition(updated.Status.Conditions, string(v1alpha1.NetworkPolicyReadyCondition))
 			Expect(cond).ToNot(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(cond.Reason).To(Equal(string(v1alpha1.NetworkPolicyEmptyRules)))
 
 			By("Validating the underlying netv1.NetworkPolicy has no addresses")
@@ -552,12 +552,12 @@ var _ = Describe("NetworkPolicy Controller", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Verifying initial condition is not ready")
+			By("Verifying initial condition is ready but empty")
 			np := &v1alpha1.NetworkPolicy{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, np)).To(Succeed())
 			cond := meta.FindStatusCondition(np.Status.Conditions, string(v1alpha1.NetworkPolicyReadyCondition))
 			Expect(cond).ToNot(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(cond.Reason).To(Equal(string(v1alpha1.NetworkPolicyEmptyRules)))
 			lookup := v1alpha1.FQDNStatusList(np.Status.FQDNs).LookupTable()
 			Expect(lookup["example.com"].Addresses).To(BeEmpty())
