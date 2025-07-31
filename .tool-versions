@@ -1,4 +1,4 @@
-kubectl 1.33.1
+kubectl 1.33.3
 golang 1.24.5
 kind 0.29.0
 golangci-lint 2.1.6
