@@ -18,6 +18,7 @@ priorities.
 ## 📚 Table of Contents
 
 - [✨ Features](#-features)
+- [⚠️ Limitations](#-limitations)
 - [🧾 CRD Overview](#-crd-overview)
     - [Important Behavior Notes](#important-behavior-notes)
     - [Resource Kind & Short Name](#resource-kind--short-name)
