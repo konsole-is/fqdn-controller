@@ -18,6 +18,7 @@ priorities.
 ## 📚 Table of Contents
 
 - [✨ Features](#-features)
+- [⚠️ Limitations](#-limitations)
 - [🧾 CRD Overview](#-crd-overview)
     - [Important Behavior Notes](#important-behavior-notes)
     - [Resource Kind & Short Name](#resource-kind--short-name)
@@ -42,6 +43,14 @@ priorities.
 - Optionally filter private IPs to enforce security policies
 - Supports IPv4, IPv6, or both
 - Helm chart available via Artifact Hub
+
+---
+
+## ⚠️ Limitations
+
+The controller is not suitable for domains with highly dynamic IP resolution. For example, domains like google.com may return different IPs every few minutes. If your workloads rely on consistent IP connectivity to such domains and cannot tolerate brief network disruptions, this operator may not meet your needs.
+
+That said, domains with mostly static IPs, but that may occasionally change, can still work well. In such cases, network connectivity may be briefly interrupted during the window between an IP change and the next successful DNS resolution. The duration of this outage is at most equal to the ttlSeconds value specified in your policy.
 
 ---
 

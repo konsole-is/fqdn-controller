@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Import GPG key for Helm signing
         env:
@@ -41,12 +41,12 @@ jobs:
           gpg --no-default-keyring --secret-keyring ~/.gnupg-legacy/secring.gpg --list-secret-keys
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Install helm
-        uses: azure/setup-helm@v4.3.0
+        uses: azure/setup-helm@v4.3.1
         with:
           version: v3.18.4
         id: install
@@ -106,7 +106,7 @@ jobs:
 
       - name: Checkout gh-pages branch
         if: github.event.release.prerelease == false
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: gh-pages
           path: gh-pages
