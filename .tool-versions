@@ -1,5 +1,5 @@
-kubectl 1.33.4
-golang 1.25.1
+kubectl 1.34.0
+golang 1.25.3
 kind 0.30.0
-golangci-lint 2.4.0
+golangci-lint 2.5.0
 helm 3.19.0

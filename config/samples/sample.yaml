@@ -1,0 +1,20 @@
+apiVersion: fqdn.konsole.is/v1alpha1
+kind: NetworkPolicy
+metadata:
+  name: allow-selected-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  egress:
+    - toFQDNS:
+        - github.com
+      ports:
+        - protocol: TCP
+          port: 443
+    - toFQDNS:
+        - example.com
+      ports:
+        - protocol: TCP
+          port: 80
+      blockPrivateIPs: true
