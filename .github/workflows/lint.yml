@@ -26,6 +26,6 @@ jobs:
           git diff --exit-code
 
       - name: Run linter
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.1.0
