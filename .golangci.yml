@@ -30,6 +30,9 @@ linters:
       - path: "^api/.*"
         linters:
           - lll
+      - path: "_test\\.go$"
+        linters:
+          - goconst
       - path: "^internal/.*"
         linters:
           - dupl

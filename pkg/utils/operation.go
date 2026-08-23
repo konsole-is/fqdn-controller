@@ -10,7 +10,7 @@ import (
 
 func typeName(obj interface{}) string {
 	t := reflect.TypeOf(obj)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t.Name()

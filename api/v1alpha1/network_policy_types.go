@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // NetworkType defines the available ip address types to resolve
@@ -251,5 +252,8 @@ type NetworkPolicyList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&NetworkPolicy{}, &NetworkPolicyList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &NetworkPolicy{}, &NetworkPolicyList{})
+		return nil
+	})
 }

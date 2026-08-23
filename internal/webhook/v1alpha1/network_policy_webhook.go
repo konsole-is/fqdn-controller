@@ -20,10 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	v1alpha1 "github.com/konsole-is/fqdn-controller/api/v1alpha1"
@@ -35,7 +33,7 @@ var networkpolicylog = logf.Log.WithName("networkpolicy-resource")
 
 // SetupNetworkPolicyWebhookWithManager registers the webhook for NetworkPolicy in the manager.
 func SetupNetworkPolicyWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&v1alpha1.NetworkPolicy{}).
+	return ctrl.NewWebhookManagedBy(mgr, &v1alpha1.NetworkPolicy{}).
 		WithValidator(&NetworkPolicyCustomValidator{}).
 		WithDefaulter(&NetworkPolicyCustomDefaulter{}).
 		Complete()
@@ -54,23 +52,17 @@ type NetworkPolicyCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &NetworkPolicyCustomDefaulter{}
+var _ admission.Defaulter[*v1alpha1.NetworkPolicy] = &NetworkPolicyCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind NetworkPolicy.
-func (d *NetworkPolicyCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	np, ok := obj.(*v1alpha1.NetworkPolicy)
-
-	if !ok {
-		return fmt.Errorf("expected an NetworkPolicy object but got %T", obj)
-	}
+func (d *NetworkPolicyCustomDefaulter) Default(_ context.Context, np *v1alpha1.NetworkPolicy) error {
 	networkpolicylog.Info("Defaulting for NetworkPolicy", "name", np.GetName())
 
 	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
+// NOTE: If you want to customise the 'path', use the flags '--defaulting-path' or '--validation-path'.
 // +kubebuilder:webhook:path=/validate-fqdn-konsole-is-v1alpha1-networkpolicy,mutating=false,failurePolicy=fail,sideEffects=None,groups=fqdn.konsole.is,resources=networkpolicies,verbs=create;update,versions=v1alpha1,name=vnetworkpolicy-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // NetworkPolicyCustomValidator struct is responsible for validating the NetworkPolicy resource
@@ -82,7 +74,7 @@ type NetworkPolicyCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &NetworkPolicyCustomValidator{}
+var _ admission.Validator[*v1alpha1.NetworkPolicy] = &NetworkPolicyCustomValidator{}
 
 func validateFQDNs(n *v1alpha1.NetworkPolicy) error {
 	for i, rule := range n.Spec.Egress {
@@ -123,11 +115,7 @@ func defaultValidation(np *v1alpha1.NetworkPolicy) error {
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type FQDNNetworkPolicy.
-func (v *NetworkPolicyCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	np, ok := obj.(*v1alpha1.NetworkPolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a NetworkPolicy object but got %T", obj)
-	}
+func (v *NetworkPolicyCustomValidator) ValidateCreate(_ context.Context, np *v1alpha1.NetworkPolicy) (admission.Warnings, error) {
 	networkpolicylog.Info("Validation for NetworkPolicy upon creation", "name", np.GetName())
 
 	if err := defaultValidation(np); err != nil {
@@ -137,11 +125,7 @@ func (v *NetworkPolicyCustomValidator) ValidateCreate(_ context.Context, obj run
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type FQDNNetworkPolicy.
-func (v *NetworkPolicyCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	np, ok := newObj.(*v1alpha1.NetworkPolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a NetworkPolicy object for the newObj but got %T", newObj)
-	}
+func (v *NetworkPolicyCustomValidator) ValidateUpdate(_ context.Context, _, np *v1alpha1.NetworkPolicy) (admission.Warnings, error) {
 	networkpolicylog.Info("Validation for NetworkPolicy upon update", "name", np.GetName())
 
 	if err := defaultValidation(np); err != nil {
@@ -151,12 +135,8 @@ func (v *NetworkPolicyCustomValidator) ValidateUpdate(_ context.Context, oldObj,
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type NetworkPolicy.
-func (v *NetworkPolicyCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	networkpolicy, ok := obj.(*v1alpha1.NetworkPolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a NetworkPolicy object but got %T", obj)
-	}
-	networkpolicylog.Info("Validation for NetworkPolicy upon deletion", "name", networkpolicy.GetName())
+func (v *NetworkPolicyCustomValidator) ValidateDelete(_ context.Context, np *v1alpha1.NetworkPolicy) (admission.Warnings, error) {
+	networkpolicylog.Info("Validation for NetworkPolicy upon deletion", "name", np.GetName())
 
 	return nil, nil
 }
