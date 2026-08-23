@@ -173,7 +173,8 @@ build-chart: build-installer ## Generate the Helm chart in dist/chart from the k
 	sed -i'' -e "s|^\(\s*tag:\s*\).*|\1\"$(shell echo ${IMG} | cut -d ':' -f 2)\"|" dist/chart/values.yaml
 	sed -i'' -e "s/^version:.*/version: ${TAG}/" dist/chart/Chart.yaml
 	sed -i'' -e "s/^appVersion:.*/appVersion: \"${TAG}\"/" dist/chart/Chart.yaml
-	helm plugin install https://github.com/losisin/helm-values-schema-json.git >/dev/null 2>&1 || true
+	helm plugin install https://github.com/losisin/helm-values-schema-json.git --verify=false >/dev/null 2>&1 || \
+		helm plugin install https://github.com/losisin/helm-values-schema-json.git >/dev/null 2>&1 || true
 	helm plugin update schema >/dev/null 2>&1
 	helm schema -f dist/chart/values.yaml -o dist/chart/values.schema.json
 
