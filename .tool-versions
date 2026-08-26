@@ -1,6 +1,6 @@
 kubectl 1.36.4
 golang 1.27.0
-kind 0.32.0
+kind 0.33.0
 golangci-lint 2.13.1
 helm 4.2.4
 kubebuilder 4.15.0
