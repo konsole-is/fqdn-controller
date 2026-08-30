@@ -46,6 +46,36 @@ The chart is generated with the Kubebuilder `helm/v2-alpha` plugin. The most imp
 
 See `values.yaml` in the chart for the full list.
 
+### Logging
+
+The controller manager uses the controller-runtime zap logger and exposes its flags, so the log level can be
+changed by passing `--zap-log-level` through `manager.args`. Valid levels are `debug`, `info`, `error`, or any
+integer value > 0 for increasing verbosity:
+
+```yaml
+manager:
+  args:
+    - --leader-elect
+    - --zap-log-level=error
+```
+
+Or inline when installing or upgrading:
+
+```bash
+helm install fqdn-controller fqdn-controller/fqdn-controller --version <version> \
+  --set 'manager.args={--leader-elect,--zap-log-level=error}'
+```
+
+Note that setting `manager.args` replaces the default list extracted from the kustomize manifests, so the
+existing defaults (currently `--leader-elect`) must be included again when overriding it.
+
+Do not add `--metrics-bind-address`, `--health-probe-bind-address`, or `--webhook-port` to `manager.args`.
+These are managed by the `metrics.port`, `manager.healthProbe.port`, and `webhook.port` values, and adding
+them again creates duplicate flags that break probes and traffic routing.
+
+Entries in `manager.args` are rendered through Helm's `tpl` function, so they can reference other values or
+built-in objects such as `.Release.Namespace`.
+
 ### Upgrading from charts generated with `helm/v1-alpha`
 
 Chart versions that were generated with the deprecated `helm/v1-alpha` plugin used different value names. When
