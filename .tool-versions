@@ -1,5 +1,5 @@
 kubectl 1.37.0
-golang 1.27.0
+golang 1.27.4
 kind 0.33.0
 golangci-lint 2.15.0
 helm 4.2.4
