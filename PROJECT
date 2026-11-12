@@ -2,12 +2,14 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-cliVersion: 4.6.0
+cliVersion: 4.15.0
 domain: konsole.is
 layout:
 - go.kubebuilder.io/v4
 plugins:
-  helm.kubebuilder.io/v1-alpha: {}
+  helm.kubebuilder.io/v2-alpha:
+    manifests: dist/install.yaml
+    output: dist
 projectName: fqdn-controller
 repo: github.com/konsole-is/fqdn-controller
 resources:

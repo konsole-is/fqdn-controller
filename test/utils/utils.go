@@ -28,11 +28,11 @@ import (
 )
 
 const (
-	prometheusOperatorVersion = "v0.83.0"
+	prometheusOperatorVersion = "v0.93.1"
 	prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/" +
 		"releases/download/%s/bundle.yaml"
 
-	certmanagerVersion = "v1.18.1"
+	certmanagerVersion = "v1.21.1"
 	certmanagerURLTmpl = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"
 )
 
