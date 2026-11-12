@@ -31,3 +31,5 @@ dist/**/*
 !dist/chart/README.md
 !dist/chart_icon.png
 cover.out
+# Kubeconfig might contain secrets
+*.kubeconfig
