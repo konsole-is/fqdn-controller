@@ -223,7 +223,7 @@ spec:
 ### Helm installation
 
 If you wish to manage the CRDs outside the helm chart you can install them from the release manifests. You must 
-explicitly disable the crd installation in the helm chart if you prefer this, using the flag `--set crd.enable=false`.
+explicitly disable the crd installation in the helm chart if you prefer this, using the flag `--set crd.enabled=false`.
 
 ```bash
 curl -sL https://github.com/konsole-is/fqdn-controller/releases/download/<version>/crds.yaml | kubectl apply -f -

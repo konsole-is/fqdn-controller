@@ -158,15 +158,23 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > dist/install.yaml
-	$(KUSTOMIZE) build config/crd > dist/crds.yaml
-	kubebuilder edit --plugins=helm/v1-alpha
-	sed -i'' -e "s|^\(\s*repository:\s*\).*|\1\"$(shell echo ${IMG} | cut -d ':' -f 1)\"|" dist/chart/values.yaml
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build config/default > dist/install.yaml
+	"$(KUSTOMIZE)" build config/crd > dist/crds.yaml
+
+# The helm/v2-alpha plugin parses dist/install.yaml (it runs `make build-installer` itself first) and generates the
+# chart from it. Generated chart files are removed first so the chart always matches the kustomize output; Chart.yaml
+# and README.md are never touched by the plugin.
+.PHONY: build-chart
+build-chart: build-installer ## Generate the Helm chart in dist/chart from the kustomize output.
+	rm -rf dist/chart/templates dist/chart/values.yaml dist/chart/values.schema.json dist/chart/.helmignore
+	kubebuilder edit --plugins=helm/v2-alpha
+	sed -i'' -e "s|^\(\s*repository:\s*\).*|\1$(shell echo ${IMG} | cut -d ':' -f 1)|" dist/chart/values.yaml
 	sed -i'' -e "s|^\(\s*tag:\s*\).*|\1\"$(shell echo ${IMG} | cut -d ':' -f 2)\"|" dist/chart/values.yaml
 	sed -i'' -e "s/^version:.*/version: ${TAG}/" dist/chart/Chart.yaml
 	sed -i'' -e "s/^appVersion:.*/appVersion: \"${TAG}\"/" dist/chart/Chart.yaml
-	helm plugin install https://github.com/losisin/helm-values-schema-json.git >/dev/null 2>&1 || true
+	helm plugin install https://github.com/losisin/helm-values-schema-json.git --verify=false >/dev/null 2>&1 || \
+		helm plugin install https://github.com/losisin/helm-values-schema-json.git >/dev/null 2>&1 || true
 	helm plugin update schema >/dev/null 2>&1
 	helm schema -f dist/chart/values.yaml -o dist/chart/values.schema.json
 
@@ -194,7 +202,7 @@ undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: helm-deploy
-helm-deploy: build-installer docker-build ## deploy locally built helm chart to kind cluster
+helm-deploy: build-chart docker-build ## deploy locally built helm chart to kind cluster
 	$(KIND) load docker-image $(IMG) --name $(KIND_CLUSTER)
 	helm install fqdn-controller ./dist/chart -n fqdn-controller --create-namespace
 
@@ -218,13 +226,20 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.6.0
-CONTROLLER_TOOLS_VERSION ?= v0.18.0
-#ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
-ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
+KUSTOMIZE_VERSION ?= v5.8.1
+CONTROLLER_TOOLS_VERSION ?= v0.21.0
+
+#ENVTEST_VERSION is the controller-runtime version to use for setup-envtest, derived from go.mod
+ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
+  [ -n "$$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
+  printf '%s\n' "$$v")
+
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
-ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-GOLANGCI_LINT_VERSION ?= v2.1.0
+ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
+  [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
+  printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
+
+GOLANGCI_LINT_VERSION ?= v2.13.1
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -259,13 +274,17 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 # $2 - package url which can be installed
 # $3 - specific version of package
 define go-install-tool
-@[ -f "$(1)-$(3)" ] || { \
+@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
-rm -f $(1) || true ;\
-GOBIN=$(LOCALBIN) go install $${package} ;\
-mv $(1) $(1)-$(3) ;\
+rm -f "$(1)" ;\
+GOBIN="$(LOCALBIN)" go install $${package} ;\
+mv "$(LOCALBIN)/$$(basename "$(1)")" "$(1)-$(3)" ;\
 } ;\
-ln -sf $(1)-$(3) $(1)
+ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
+endef
+
+define gomodver
+$(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
